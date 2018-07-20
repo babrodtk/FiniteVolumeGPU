@@ -103,7 +103,7 @@ class CTCSNetCDFWriter:
         
         
     def __exit__(self, exc_type, exc_value, traceback):
-        print "Closing '" + self.ncfile.filepath() + "'"
+        #print("Closing '" + self.ncfile.filepath() + "'")
         self.ncfile.close()
         
         

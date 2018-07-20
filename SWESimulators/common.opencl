@@ -749,7 +749,7 @@ float WAF_minbee(float r_, float c_) {
     if (r_ <= 0.0f) {
         return 1.0f;
     }
-    else if (r_ <= 1.0f) {
+    else if (r_ >= 0.0f && r_ <= 1.0f) {
         return 1.0f - (1.0f - fabs(c_))*r_;
     }
     else {
@@ -833,17 +833,13 @@ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, cons
     const float c_3 = S_r * dt_ / dx_;
     
     // Compute the "upwind change" vectors for the i-3/2 and i+3/2 interfaces
-    // We use h for the tangential direction, and v for the normal direction
-    const float dh = h_r - h_l;
-    const float rh_m = (h_l - h_l2) / dh;
-    const float rh_p = (h_r2 - h_r) / dh;
+    const float rh_m = fmin(fmax( (h_l - h_l2) / (h_r - h_l), -1.0f ), 1.0f);
+    const float rh_p = fmin(fmax( (h_r2 - h_r) / (h_r - h_l), -1.0f ), 1.0f);
     
-    const float dv = v_r - v_l;
-    const float rv_m = (v_l - v_l2) / dv;
-    const float rv_p = (v_r2 - v_r) / dv;
+    const float rv_m = fmin(fmax( (v_l - v_l2) / (v_r - v_l), -1.0f ), 1.0f);
+    const float rv_p = fmin(fmax( (v_r2 - v_r) / (v_r - v_l), -1.0f ), 1.0f);
     
     // Compute the r parameters for the flux limiter
-    // Note that you use h for h and hu, and v for hv component/equation
     const float rh_1 = (c_1 > 0.0f) ? rh_m : rh_p; 
     const float rv_1 = (c_1 > 0.0f) ? rv_m : rv_p; 
     
@@ -854,9 +850,10 @@ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, cons
     const float rv_3 = (c_3 > 0.0f) ? rv_m : rv_p;
     
     // Compute the limiter
-    const float A_1 = sign(c_1)*WAF_minbee(rh_1, c_1);
-    const float A_2 = sign(c_2)*WAF_minbee(rv_2, c_2);
-    const float A_3 = sign(c_3)*WAF_minbee(rh_3, c_3);
+    // We use h for the nonlinear waves, and v for the middle shear wave 
+    const float A_1 = c_1;//sign(c_1)*WAF_minbee(rh_1, c_1);
+    const float A_2 = c_2;//sign(c_2)*WAF_minbee(rv_2, c_2); //Middle shear wave 
+    const float A_3 = c_3;//sign(c_3)*WAF_minbee(rh_3, c_3); 
         
     //Average the fluxes
     const float3 flux = 0.5f*( F_1 + F_4 )

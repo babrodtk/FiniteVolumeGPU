@@ -26,7 +26,8 @@ def get_kernel(cl_ctx, kernel_filename, block_width, block_height):
             return '"' + s.replace(" ", "\\ ") + '"'
         elif ('NVIDIA' in platform_name):
             #NVIDIA doesn't like double quoted paths...
-            return "'" + s + "'"
+            #return "'" + s + "'"
+            return s
             
     module_path = os.path.dirname(os.path.realpath(__file__))
     module_path_escaped = shellquote(module_path)
@@ -96,7 +97,7 @@ class OpenCLArray2D:
     @staticmethod
     def convert_to_float32(data):
         if (not np.issubdtype(data.dtype, np.float32) or np.isfortran(data)):
-            print "Converting H0"
+            #print("Converting H0")
             return data.astype(np.float32, order='C')
         else:
             return data

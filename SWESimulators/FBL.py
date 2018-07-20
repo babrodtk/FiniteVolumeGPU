@@ -25,7 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #Import packages we need
 import numpy as np
 import pyopencl as cl #OpenCL in Python
-import Common
+from SWESimulators import Common
         
         
         
@@ -111,6 +111,8 @@ class FBL:
                       ) 
     
     
+    def __str__(self):
+        return "Forward Backward Linear"
     
     
     """
