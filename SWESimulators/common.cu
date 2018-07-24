@@ -23,12 +23,89 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 /**
+  * Location of thread in block
+  */
+inline __device__ int get_local_id(int dim) {
+    switch(dim) {
+        case 0: return threadIdx.x; 
+        case 1: return threadIdx.y;
+        case 2: return threadIdx.z;
+        default: return -1;
+    }
+}
+
+
+/**
+  * Get block index
+  */
+__device__ int get_group_id(int dim) {
+    switch(dim) {
+        case 0: return blockIdx.x;
+        case 1: return blockIdx.y;
+        case 2: return blockIdx.z;
+        default: return -1;
+    }
+}
+
+/**
+  * Location of thread in global domain
+  */
+__device__ int get_global_id(int dim) {
+    switch(dim) {
+        case 0: return blockDim.x*blockIdx.x + threadIdx.x;
+        case 1: return blockDim.y*blockIdx.y + threadIdx.y;
+        case 2: return blockDim.z*blockIdx.z + threadIdx.z;
+        default: return -1;
+    }
+}
+
+
+__device__ int get_local_size(int dim) {
+    switch(dim) {
+        case 0: return blockDim.x;
+        case 1: return blockDim.y;
+        case 2: return blockDim.z;
+        default: return -1;
+    }
+}
+
+
+
+/**
+  * Float3 operators 
+  */
+inline __device__ float3 operator*(const float a, const float3 b) {
+    return make_float3(a*b.x, a*b.y, a*b.z);
+}
+
+inline __device__ float3 operator/(const float3 a, const float b) {
+    return make_float3(a.x/b, a.y/b, a.z/b);
+}
+
+inline __device__ float3 operator-(const float3 a, const float3 b) {
+    return make_float3(a.x-b.x, a.y-b.y, a.z-b.z);
+}
+
+inline __device__ float3 operator+(const float3 a, const float3 b) {
+    return make_float3(a.x+b.x, a.y+b.y, a.z+b.z);
+}
+
+
+inline __device__ __host__ float clamp(const float f, const float a, const float b) {
+    return fmaxf(a, fminf(f, b));
+}
+
+
+
+
+
+/**
   * Reads a block of data  with one ghost cell for the shallow water equations
   */
-void readBlock1(__global float* h_ptr_, int h_pitch_,
-                __global float* hu_ptr_, int hu_pitch_,
-                __global float* hv_ptr_, int hv_pitch_,
-                __local float Q[3][block_height+2][block_width+2], 
+__device__ void readBlock1(float* h_ptr_, int h_pitch_,
+                float* hu_ptr_, int hu_pitch_,
+                float* hv_ptr_, int hv_pitch_,
+                float Q[3][block_height+2][block_width+2], 
                 const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -43,9 +120,9 @@ void readBlock1(__global float* h_ptr_, int h_pitch_,
         const int l = clamp(by + j, 0, ny_+1); // Out of bounds
         
         //Compute the pointer to current row in the arrays
-        __global float* const h_row = (__global float*) ((__global char*) h_ptr_ + h_pitch_*l);
-        __global float* const hu_row = (__global float*) ((__global char*) hu_ptr_ + hu_pitch_*l);
-        __global float* const hv_row = (__global float*) ((__global char*) hv_ptr_ + hv_pitch_*l);
+        float* const h_row  = (float*) ((char*) h_ptr_  + h_pitch_*l);
+        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
+        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
         
         for (int i=tx; i<block_width+2; i+=get_local_size(0)) {
             const int k = clamp(bx + i, 0, nx_+1); // Out of bounds
@@ -64,10 +141,10 @@ void readBlock1(__global float* h_ptr_, int h_pitch_,
 /**
   * Reads a block of data  with two ghost cells for the shallow water equations
   */
-void readBlock2(__global float* h_ptr_, int h_pitch_,
-                __global float* hu_ptr_, int hu_pitch_,
-                __global float* hv_ptr_, int hv_pitch_,
-                __local float Q[3][block_height+4][block_width+4], 
+__device__ void readBlock2(float* h_ptr_, int h_pitch_,
+                float* hu_ptr_, int hu_pitch_,
+                float* hv_ptr_, int hv_pitch_,
+                float Q[3][block_height+4][block_width+4], 
                 const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -82,9 +159,9 @@ void readBlock2(__global float* h_ptr_, int h_pitch_,
         const int l = clamp(by + j, 0, ny_+3); // Out of bounds
         
         //Compute the pointer to current row in the arrays
-        __global float* const h_row = (__global float*) ((__global char*) h_ptr_ + h_pitch_*l);
-        __global float* const hu_row = (__global float*) ((__global char*) hu_ptr_ + hu_pitch_*l);
-        __global float* const hv_row = (__global float*) ((__global char*) hv_ptr_ + hv_pitch_*l);
+        float* const h_row  = (float*) ((char*) h_ptr_  + h_pitch_*l);
+        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
+        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
         
         for (int i=tx; i<block_width+4; i+=get_local_size(0)) {
             const int k = clamp(bx + i, 0, nx_+3); // Out of bounds
@@ -102,10 +179,10 @@ void readBlock2(__global float* h_ptr_, int h_pitch_,
 /**
   * Writes a block of data to global memory for the shallow water equations.
   */
-void writeBlock1(__global float* h_ptr_, int h_pitch_,
-                 __global float* hu_ptr_, int hu_pitch_,
-                 __global float* hv_ptr_, int hv_pitch_,
-                 __local float Q[3][block_height+2][block_width+2],
+__device__ void writeBlock1(float* h_ptr_, int h_pitch_,
+                 float* hu_ptr_, int hu_pitch_,
+                 float* hv_ptr_, int hv_pitch_,
+                 float Q[3][block_height+2][block_width+2],
                  const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -120,9 +197,9 @@ void writeBlock1(__global float* h_ptr_, int h_pitch_,
         const int i = tx + 1; //Skip local ghost cells, i.e., +1
         const int j = ty + 1;
 
-        __global float* const h_row  = (__global float*) ((__global char*) h_ptr_ + h_pitch_*tj);
-        __global float* const hu_row = (__global float*) ((__global char*) hu_ptr_ + hu_pitch_*tj);
-        __global float* const hv_row = (__global float*) ((__global char*) hv_ptr_ + hv_pitch_*tj);
+        float* const h_row  = (float*) ((char*) h_ptr_  + h_pitch_*tj);
+        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*tj);
+        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*tj);
         
         h_row[ti]  = Q[0][j][i];
         hu_row[ti] = Q[1][j][i];
@@ -137,10 +214,10 @@ void writeBlock1(__global float* h_ptr_, int h_pitch_,
 /**
   * Writes a block of data to global memory for the shallow water equations.
   */
-void writeBlock2(__global float* h_ptr_, int h_pitch_,
-                 __global float* hu_ptr_, int hu_pitch_,
-                 __global float* hv_ptr_, int hv_pitch_,
-                 __local float Q[3][block_height+4][block_width+4], 
+__device__ void writeBlock2(float* h_ptr_, int h_pitch_,
+                 float* hu_ptr_, int hu_pitch_,
+                 float* hv_ptr_, int hv_pitch_,
+                 float Q[3][block_height+4][block_width+4], 
                  const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -155,9 +232,9 @@ void writeBlock2(__global float* h_ptr_, int h_pitch_,
         const int i = tx + 2; //Skip local ghost cells, i.e., +2
         const int j = ty + 2;
 
-        __global float* const h_row  = (__global float*) ((__global char*) h_ptr_ + h_pitch_*tj);
-        __global float* const hu_row = (__global float*) ((__global char*) hu_ptr_ + hu_pitch_*tj);
-        __global float* const hv_row = (__global float*) ((__global char*) hv_ptr_ + hv_pitch_*tj);
+        float* const h_row  = (float*) ((char*) h_ptr_ + h_pitch_*tj);
+        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*tj);
+        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*tj);
         
         h_row[ti]  = Q[0][j][i];
         hu_row[ti] = Q[1][j][i];
@@ -174,7 +251,7 @@ void writeBlock2(__global float* h_ptr_, int h_pitch_,
   * No flow boundary conditions for the shallow water equations
   * with one ghost cell in each direction
   */
-void noFlowBoundary1(__local float Q[3][block_height+2][block_width+2], const int nx_, const int ny_) {
+__device__ void noFlowBoundary1(float Q[3][block_height+2][block_width+2], const int nx_, const int ny_) {
     //Global index
     const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
     const int tj = get_global_id(1) + 1;
@@ -218,7 +295,7 @@ void noFlowBoundary1(__local float Q[3][block_height+2][block_width+2], const in
   * No flow boundary conditions for the shallow water equations
   * with two ghost cells in each direction
   */
-void noFlowBoundary2(__local float Q[3][block_height+4][block_width+4], const int nx_, const int ny_) {
+__device__ void noFlowBoundary2(float Q[3][block_height+4][block_width+4], const int nx_, const int ny_) {
     //Global index
     const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
     const int tj = get_global_id(1) + 2;
@@ -276,8 +353,8 @@ void noFlowBoundary2(__local float Q[3][block_height+4][block_width+4], const in
 /**
   * Evolves the solution in time along the x axis (dimensional splitting)
   */
-void evolveF1(__local float Q[3][block_height+2][block_width+2],
-              __local float F[3][block_height+1][block_width+1],
+__device__ void evolveF1(float Q[3][block_height+2][block_width+2],
+              float F[3][block_height+1][block_width+1],
               const int nx_, const int ny_,
               const float dx_, const float dt_) {
     //Index of thread within block
@@ -306,8 +383,8 @@ void evolveF1(__local float Q[3][block_height+2][block_width+2],
 /**
   * Evolves the solution in time along the x axis (dimensional splitting)
   */
-void evolveF2(__local float Q[3][block_height+4][block_width+4],
-              __local float F[3][block_height+1][block_width+1],
+__device__ void evolveF2(float Q[3][block_height+4][block_width+4],
+              float F[3][block_height+1][block_width+1],
               const int nx_, const int ny_,
               const float dx_, const float dt_) {
     //Index of thread within block
@@ -336,8 +413,8 @@ void evolveF2(__local float Q[3][block_height+4][block_width+4],
 /**
   * Evolves the solution in time along the y axis (dimensional splitting)
   */
-void evolveG1(__local float Q[3][block_height+2][block_width+2],
-              __local float G[3][block_height+1][block_width+1],
+__device__ void evolveG1(float Q[3][block_height+2][block_width+2],
+              float G[3][block_height+1][block_width+1],
               const int nx_, const int ny_,
               const float dy_, const float dt_) {
     //Index of thread within block
@@ -367,8 +444,8 @@ void evolveG1(__local float Q[3][block_height+2][block_width+2],
 /**
   * Evolves the solution in time along the y axis (dimensional splitting)
   */
-void evolveG2(__local float Q[3][block_height+4][block_width+4],
-              __local float G[3][block_height+1][block_width+1],
+__device__ void evolveG2(float Q[3][block_height+4][block_width+4],
+              float G[3][block_height+1][block_width+1],
               const int nx_, const int ny_,
               const float dy_, const float dt_) {
     //Index of thread within block
@@ -402,7 +479,7 @@ void evolveG2(__local float Q[3][block_height+4][block_width+4],
   * Reconstructs a slope using the minmod limiter based on three 
   * consecutive values
   */
-float minmodSlope(float left, float center, float right, float theta) {
+__device__ float minmodSlope(float left, float center, float right, float theta) {
     const float backward = (center - left) * theta;
     const float central = (right - left) * 0.5f;
     const float forward = (right - center) * theta;
@@ -420,8 +497,8 @@ float minmodSlope(float left, float center, float right, float theta) {
 /**
   * Reconstructs a minmod slope for a whole block along x
   */
-void minmodSlopeX(__local float  Q[3][block_height+4][block_width+4],
-                  __local float Qx[3][block_height+2][block_width+2],
+__device__ void minmodSlopeX(float  Q[3][block_height+4][block_width+4],
+                  float Qx[3][block_height+2][block_width+2],
                   const float theta_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -443,8 +520,8 @@ void minmodSlopeX(__local float  Q[3][block_height+4][block_width+4],
 /**
   * Reconstructs a minmod slope for a whole block along y
   */
-void minmodSlopeY(__local float  Q[3][block_height+4][block_width+4],
-                  __local float Qy[3][block_height+2][block_width+2],
+__device__ void minmodSlopeY(float  Q[3][block_height+4][block_width+4],
+                  float Qy[3][block_height+2][block_width+2],
                   const float theta_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -466,91 +543,10 @@ void minmodSlopeY(__local float  Q[3][block_height+4][block_width+4],
 
 
 
-float windStressX(int wind_stress_type_,
-                float dx_, float dy_, float dt_,
-                float tau0_, float rho_, float alpha_, float xm_, float Rc_,
-                float x0_, float y0_,
-                float u0_, float v0_,
-                float t_) {
-    
-    float X = 0.0f;
-    
-    switch (wind_stress_type_) {
-    case 0: //UNIFORM_ALONGSHORE
-        {
-            const float y = (get_global_id(1)+0.5f)*dy_;
-            X = tau0_/rho_ * exp(-alpha_*y);
-        }
-        break;
-    case 1: //BELL_SHAPED_ALONGSHORE
-        if (t_ <= 48.0f*3600.0f) {
-            const float a = alpha_*((get_global_id(0)+0.5f)*dx_-xm_);
-            const float aa = a*a;
-            const float y = (get_global_id(1)+0.5f)*dy_;
-            X = tau0_/rho_ * exp(-aa) * exp(-alpha_*y);
-        }
-        break;
-    case 2: //MOVING_CYCLONE
-        {
-            const float x = (get_global_id(0))*dx_;
-            const float y = (get_global_id(1)+0.5f)*dy_;
-            const float a = (x-x0_-u0_*(t_+dt_));
-            const float aa = a*a;
-            const float b = (y-y0_-v0_*(t_+dt_));
-            const float bb = b*b;
-            const float r = sqrt(aa+bb);
-            const float c = 1.0f - r/Rc_;
-            const float xi = c*c;
-            
-            X = -(tau0_/rho_) * (b/Rc_) * exp(-0.5f*xi);
-        }
-        break;
-    }
-
-    return X;
-}
 
 
 
-
-
-
-float windStressY(int wind_stress_type_,
-                float dx_, float dy_, float dt_,
-                float tau0_, float rho_, float alpha_, float xm_, float Rc_,
-                float x0_, float y0_,
-                float u0_, float v0_,
-                float t_) {
-    float Y = 0.0f;
-    
-    switch (wind_stress_type_) {
-    case 2: //MOVING_CYCLONE:
-        {
-            const float x = (get_global_id(0)+0.5f)*dx_; 
-            const float y = (get_global_id(1))*dy_;
-            const float a = (x-x0_-u0_*(t_+dt_));
-            const float aa = a*a;
-            const float b = (y-y0_-v0_*(t_+dt_));
-            const float bb = b*b;
-            const float r = sqrt(aa+bb);
-            const float c = 1.0f - r/Rc_;
-            const float xi = c*c;
-            
-            Y = (tau0_/rho_) * (a/Rc_) * exp(-0.5f*xi);
-        }
-        break;
-    }
-
-    return Y;
-}
-
-
-
-
-
-
-
-float3 F_func(const float3 Q, const float g) {
+__device__ float3 F_func(const float3 Q, const float g) {
     float3 F;
 
     F.x = Q.y;                              //hu
@@ -567,7 +563,7 @@ float3 F_func(const float3 Q, const float g) {
 /**
   * Central upwind flux function
   */
-float3 CentralUpwindFlux(const float3 Qm, float3 Qp, const float g) {
+__device__ float3 CentralUpwindFlux(const float3 Qm, float3 Qp, const float g) {
     const float3 Fp = F_func(Qp, g);
     const float up = Qp.y / Qp.x;   // hu / h
     const float cp = sqrt(g*Qp.x); // sqrt(g*h)
@@ -594,7 +590,7 @@ float3 CentralUpwindFlux(const float3 Qm, float3 Qp, const float g) {
 /**
   * Harten-Lax-van Leer with contact discontinuity (Toro 2001, p 180)
   */
-float3 HLL_flux(const float3 Q_l, const float3 Q_r, const float g_) {    
+__device__ float3 HLL_flux(const float3 Q_l, const float3 Q_r, const float g_) {    
     const float h_l = Q_l.x;
     const float h_r = Q_r.x;
     
@@ -646,7 +642,7 @@ float3 HLL_flux(const float3 Q_l, const float3 Q_r, const float g_) {
 /**
   * Harten-Lax-van Leer with contact discontinuity (Toro 2001, p 181)
   */
-float3 HLLC_flux(const float3 Q_l, const float3 Q_r, const float g_) {    
+__device__ float3 HLLC_flux(const float3 Q_l, const float3 Q_r, const float g_) {    
     const float h_l = Q_l.x;
     const float h_r = Q_r.x;
     
@@ -685,19 +681,19 @@ float3 HLLC_flux(const float3 Q_l, const float3 Q_r, const float g_) {
     //Or estimate flux in the "left star" region
     else if (S_l <= 0.0f && 0.0f <=S_star) {
         const float v_l = Q_l.z / h_l;
-        const float3 Q_star_l = h_l * (S_l - u_l) / (S_l - S_star) * (float3)(1, S_star, v_l);
+        const float3 Q_star_l = h_l * (S_l - u_l) / (S_l - S_star) * make_float3(1, S_star, v_l);
         const float3 flux = F_l + S_l*(Q_star_l - Q_l);
         return flux;
     }
     //Or estimate flux in the "righ star" region
     else if (S_star <= 0.0f && 0.0f <=S_r) {
         const float v_r = Q_r.z / h_r;
-        const float3 Q_star_r = h_r * (S_r - u_r) / (S_r - S_star) * (float3)(1, S_star, v_r);
+        const float3 Q_star_r = h_r * (S_r - u_r) / (S_r - S_star) * make_float3(1, S_star, v_r);
         const float3 flux = F_r + S_r*(Q_star_r - Q_r);
         return flux;
     }
     else {
-        return -99999.9f; //Something wrong here
+        return make_float3(-99999.9f, -99999.9f, -99999.9f); //Something wrong here
     }
 }
 
@@ -709,7 +705,7 @@ float3 HLLC_flux(const float3 Q_l, const float3 Q_r, const float g_) {
   * @param r_ the ratio of upwind change (see Toro 2001, p. 203/204)
   * @param c_ the courant number for wave k, dt*S_k/dx
   */
-float WAF_superbee(float r_, float c_) {
+__device__ float WAF_superbee(float r_, float c_) {
     // r <= 0.0
     if (r_ <= 0.0f) { 
         return 1.0f;
@@ -735,7 +731,7 @@ float WAF_superbee(float r_, float c_) {
 
 
 
-float WAF_albada(float r_, float c_) {
+__device__ float WAF_albada(float r_, float c_) {
     if (r_ <= 0.0f) {
         return 1.0f;
     }
@@ -744,32 +740,29 @@ float WAF_albada(float r_, float c_) {
     }
 }
 
-
-float WAF_minbee(float r_, float c_) {
-    if (r_ <= 0.0f) {
-        return 1.0f;
-    }
-    else if (r_ >= 0.0f && r_ <= 1.0f) {
-        return 1.0f - (1.0f - fabs(c_))*r_;
-    }
-    else {
-        return fabs(c_);
-    }
+__device__ float WAF_minmod(float r_, float c_) {
+    return 1.0f - (1.0f - fabs(c_)) * fmax(0.0f, fmin(1.0f, r_));
 }
 
-
-float WAF_minmod(float r_, float c_) {
-    if (r_ <= 0.0f) {
-        return fabs(c_);
-    }
-    else if (r_ <= 1.0f) {
-        return (1.0f - r_) * (1.0f - c_);
-    }
-    else {
-        return 1.0f;
-    }
+__device__ float minmod(float r_) {
+    return fmax(0.0f, fmin(1.0f, r_));
 }
 
+__device__ float superbee(float r_) {
+    return fmax(0.0f, fmax(fmin(2.0f*r_, 1.0f), fmin(r_, 2.0f)));
+}
+
+__device__ float vanAlbada1(float r_) {
+    return (r_*r_ + r_) / (r_*r_ + 1.0f);
+}
+
+__device__ float vanLeer(float r_) {
+    return (r_ + fabs(r_)) / (1.0f + fabs(r_));
+}
+
+__device__ float limiterToWAFLimiter(float r_, float c_) {
+    return 1.0f - (1.0f - fabs(c_))*r_;
+}
 
 
 /**
@@ -780,7 +773,7 @@ float WAF_minmod(float r_, float c_) {
   * @param Q_r1 Q_{i+1}
   * @param Q_r2 Q_{i+2}
   */
-float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, const float3 Q_r2, const float g_, const float dx_, const float dt_) {     
+__device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, const float3 Q_r2, const float g_, const float dx_, const float dt_) {     
     const float h_l = Q_l1.x;
     const float h_r = Q_r1.x;
     
@@ -811,12 +804,12 @@ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, cons
     const float q_r = (h_dag > h_r) ? q_r_tmp : 1.0f;
     
     // Compute wave speed estimates
-    const float S_l = u_l - c_l;//*q_l;
-    const float S_r = u_r + c_r;//*q_r;
+    const float S_l = u_l - c_l*q_l; //FIXME: Right wave speed estimate?
+    const float S_r = u_r + c_r*q_r;
     const float S_star = ( S_l*h_r*(u_r - S_r) - S_r*h_l*(u_l - S_l) ) / ( h_r*(u_r - S_r) - h_l*(u_l - S_l) );
     
-    const float3 Q_star_l = h_l * (S_l - u_l) / (S_l - S_star) * (float3)(1, S_star, v_l);
-    const float3 Q_star_r = h_r * (S_r - u_r) / (S_r - S_star) * (float3)(1, S_star, v_r);
+    const float3 Q_star_l = h_l * (S_l - u_l) / (S_l - S_star) * make_float3(1, S_star, v_l);
+    const float3 Q_star_r = h_r * (S_r - u_r) / (S_r - S_star) * make_float3(1, S_star, v_r);
     
     // Estimate the fluxes in the four regions
     const float3 F_1 = F_func(Q_l1, g_);
@@ -833,11 +826,11 @@ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, cons
     const float c_3 = S_r * dt_ / dx_;
     
     // Compute the "upwind change" vectors for the i-3/2 and i+3/2 interfaces
-    const float rh_m = fmin(fmax( (h_l - h_l2) / (h_r - h_l), -1.0f ), 1.0f);
-    const float rh_p = fmin(fmax( (h_r2 - h_r) / (h_r - h_l), -1.0f ), 1.0f);
+    const float rh_m = (h_l - h_l2) / (h_r - h_l);
+    const float rh_p = (h_r2 - h_r) / (h_r - h_l);
     
-    const float rv_m = fmin(fmax( (v_l - v_l2) / (v_r - v_l), -1.0f ), 1.0f);
-    const float rv_p = fmin(fmax( (v_r2 - v_r) / (v_r - v_l), -1.0f ), 1.0f);
+    const float rv_m = (v_l - v_l2) / (v_r - v_l);
+    const float rv_p = (v_r2 - v_r) / (v_r - v_l);
     
     // Compute the r parameters for the flux limiter
     const float rh_1 = (c_1 > 0.0f) ? rh_m : rh_p; 
@@ -851,9 +844,22 @@ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, cons
     
     // Compute the limiter
     // We use h for the nonlinear waves, and v for the middle shear wave 
-    const float A_1 = c_1;//sign(c_1)*WAF_minbee(rh_1, c_1);
-    const float A_2 = c_2;//sign(c_2)*WAF_minbee(rv_2, c_2); //Middle shear wave 
-    const float A_3 = c_3;//sign(c_3)*WAF_minbee(rh_3, c_3); 
+    ///**
+    const float A_1 = copysign(1.0f, c_1) * WAF_minmod(rh_1, c_1);
+    const float A_2 = copysign(1.0f, c_2) * WAF_minmod(rv_2, c_2); //Middle shear wave 
+    const float A_3 = copysign(1.0f, c_3) * WAF_minmod(rh_3, c_3); 
+    //*/
+    /**
+    //2nd order for smooth cases (unstable for shocks)
+    const float A_1 = c_1;
+    const float A_2 = c_2;
+    const float A_3 = c_3;
+    */
+    /*
+    const float A_1 = sign(c_1) * limiterToWAFLimiter(minmod(rh_1), c_1);
+    const float A_2 = sign(c_2) * limiterToWAFLimiter(minmod(rv_2), c_2);
+    const float A_3 = sign(c_3) * limiterToWAFLimiter(minmod(rh_3), c_3);
+    */
         
     //Average the fluxes
     const float3 flux = 0.5f*( F_1 + F_4 )
@@ -899,11 +905,11 @@ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3 Q_r1, cons
 /**
   * Lax-Friedrichs flux (Toro 2001, p 163)
   */
-float3 LxF_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
+__device__ float3 LxF_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
     const float3 F_l = F_func(Q_l, g_);
     const float3 F_r = F_func(Q_r, g_);
     
-    return 0.5f*(F_l + F_r) + (Q_l - Q_r) * dx_ / (2.0f*dt_);
+    return 0.5f*(F_l + F_r) + (dx_/(2.0f*dt_))*(Q_l - Q_r);
 }
 
 
@@ -911,12 +917,12 @@ float3 LxF_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const flo
 /**
   * Lax-Friedrichs extended to 2D
   */
-float3 LxF_2D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
+__device__ float3 LxF_2D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
     const float3 F_l = F_func(Q_l, g_);
     const float3 F_r = F_func(Q_r, g_);
     
     //Note numerical diffusion for 2D here (0.25)
-    return 0.5f*(F_l + F_r) + (Q_l - Q_r) * dx_ / (4.0f*dt_);
+    return 0.5f*(F_l + F_r) + (dx_/(4.0f*dt_))*(Q_l - Q_r);
 }
 
 
@@ -925,11 +931,11 @@ float3 LxF_2D_flux(const float3 Q_l, const float3 Q_r, const float g_, const flo
 /**
   * Richtmeyer / Two-step Lax-Wendroff flux (Toro 2001, p 164)
   */
-float3 LxW2_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
+__device__ float3 LxW2_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
     const float3 F_l = F_func(Q_l, g_);
     const float3 F_r = F_func(Q_r, g_);
     
-    const float3 Q_lw2 = 0.5f*(Q_l + Q_r) + (F_l - F_r)*dt_/(2.0f*dx_);
+    const float3 Q_lw2 = 0.5f*(Q_l + Q_r) + (dt_/(2.0f*dx_))*(F_l - F_r);
     
     return F_func(Q_lw2, g_);
 }
@@ -942,11 +948,11 @@ float3 LxW2_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const fl
 /**
   * Godunovs centered scheme (Toro 2001, p 165)
   */
-float3 GodC_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
+__device__ float3 GodC_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
     const float3 F_l = F_func(Q_l, g_);
     const float3 F_r = F_func(Q_r, g_);
     
-    const float3 Q_godc = 0.5f*(Q_l + Q_r) + (F_l - F_r)*dt_/dx_;
+    const float3 Q_godc = 0.5f*(Q_l + Q_r) + (dt_/dx_)*(F_l - F_r);
     
     return F_func(Q_godc, g_);
 }
@@ -957,7 +963,7 @@ float3 GodC_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const fl
 /**
   * First Ordered Centered (Toro 2001, p.163)
   */
-float3 FORCE_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
+__device__ float3 FORCE_1D_flux(const float3 Q_l, const float3 Q_r, const float g_, const float dx_, const float dt_) {
     const float3 F_lf = LxF_1D_flux(Q_l, Q_r, g_, dx_, dt_);
     const float3 F_lw2 = LxW2_1D_flux(Q_l, Q_r, g_, dx_, dt_);
     return 0.5f*(F_lf + F_lw2);
