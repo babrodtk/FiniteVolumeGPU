@@ -73,10 +73,10 @@ class LxF:
         #Create data by uploading to device
         ghost_cells_x = 1
         ghost_cells_y = 1
-        self.data = Common.SWEDataArakawaA(nx, ny, \
-                    ghost_cells_x, ghost_cells_y, \
-                    h0, hu0, hv0, \
-                    stream=self.stream)
+        self.data = Common.SWEDataArakawaA(self.stream, \
+                            nx, ny, \
+                            ghost_cells_x, ghost_cells_y, \
+                            h0, hu0, hv0)
         
         #Save input parameters
         #Notice that we need to specify them in the correct dataformat for the

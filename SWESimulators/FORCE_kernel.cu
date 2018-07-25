@@ -55,7 +55,6 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
             F[2][j][i] = flux.z;
         }
     }
-    __syncthreads();
 }
 
 
@@ -93,7 +92,6 @@ void computeFluxG(float Q[3][block_height+2][block_width+2],
             G[2][j][i] = flux.y;
         }
     }
-    __syncthreads();
 }
 
 
@@ -134,13 +132,7 @@ __global__ void FORCEKernel(
                hv0_ptr_, hv0_pitch_,
                Q, nx_, ny_);
     __syncthreads();
-    
-    
-    //Save our input variables
-    const float h0  = Q[0][ty+1][tx+1];
-    const float hu0 = Q[1][ty+1][tx+1];
-    const float hv0 = Q[2][ty+1][tx+1];
-    
+        
     
     //Set boundary conditions
     noFlowBoundary1(Q, nx_, ny_);
@@ -148,6 +140,7 @@ __global__ void FORCEKernel(
     
     //Compute flux along x, and evolve
     computeFluxF(Q, F, g_, dx_, dt_);
+    __syncthreads();
     evolveF1(Q, F, nx_, ny_, dx_, dt_);
     __syncthreads();
     
@@ -157,6 +150,7 @@ __global__ void FORCEKernel(
     
     //Compute flux along y, and evolve
     computeFluxG(Q, F, g_, dy_, dt_);
+    __syncthreads();
     evolveG1(Q, F, nx_, ny_, dy_, dt_);
     __syncthreads();
     
