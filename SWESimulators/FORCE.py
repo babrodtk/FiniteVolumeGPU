@@ -57,6 +57,7 @@ class FORCE:
     g: Gravitational accelleration (9.81 m/s^2)
     """
     def __init__(self, \
+                 context, \
                  h0, hu0, hv0, \
                  nx, ny, \
                  dx, dy, dt, \
@@ -66,7 +67,7 @@ class FORCE:
         self.stream = cuda.Stream()
 
         #Get kernels
-        self.force_module = Common.get_kernel("FORCE_kernel.cu", block_width, block_height)
+        self.force_module = context.get_kernel("FORCE_kernel.cu", block_width, block_height)
         self.force_kernel = self.force_module.get_function("FORCEKernel")
         self.force_kernel.prepare("iiffffPiPiPiPiPiPi")
         

@@ -53,6 +53,7 @@ class LxF:
     g: Gravitational accelleration (9.81 m/s^2)
     """
     def __init__(self, \
+                 context, \
                  h0, hu0, hv0, \
                  nx, ny, \
                  dx, dy, dt, \
@@ -62,7 +63,7 @@ class LxF:
         self.stream = None #cuda.Stream()
 
         #Get kernels
-        self.lxf_module = Common.get_kernel("LxF_kernel.cu", block_width, block_height)
+        self.lxf_module = context.get_kernel("LxF_kernel.cu", block_width, block_height)
         self.lxf_kernel = self.lxf_module.get_function("LxFKernel")
         self.lxf_kernel.prepare("iiffffPiPiPiPiPiPi")
         

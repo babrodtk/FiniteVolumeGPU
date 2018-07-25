@@ -52,6 +52,7 @@ class HLL:
     g: Gravitational accelleration (9.81 m/s^2)
     """
     def __init__(self, \
+                 context, \
                  h0, hu0, hv0, \
                  nx, ny, \
                  dx, dy, dt, \
@@ -61,7 +62,7 @@ class HLL:
         self.stream = cuda.Stream()
 
         #Get kernels
-        self.hll_module = Common.get_kernel("HLL_kernel.cu", block_width, block_height)
+        self.hll_module = context.get_kernel("HLL_kernel.cu", block_width, block_height)
         self.hll_kernel = self.hll_module.get_function("HLLKernel")
         self.hll_kernel.prepare("iiffffPiPiPiPiPiPi")
         
