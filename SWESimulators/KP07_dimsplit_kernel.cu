@@ -24,13 +24,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 
-#include "common.opencl"
+#include "common.cu"
 
 
-
-void computeFluxF(__local float Q[3][block_height+4][block_width+4],
-                  __local float Qx[3][block_height+2][block_width+2],
-                  __local float F[3][block_height+1][block_width+1],
+__device__
+void computeFluxF(float Q[3][block_height+4][block_width+4],
+                  float Qx[3][block_height+2][block_width+2],
+                  float F[3][block_height+1][block_width+1],
                   const float g_, const float dx_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -42,19 +42,19 @@ void computeFluxF(__local float Q[3][block_height+4][block_width+4],
             const int k = i + 1;
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
-            const float3 Q_rl = (float3)(Q[0][l][k+1] - 0.5f*Qx[0][j][i+1],
-                                         Q[1][l][k+1] - 0.5f*Qx[1][j][i+1],
-                                         Q[2][l][k+1] - 0.5f*Qx[2][j][i+1]);
-            const float3 Q_rr = (float3)(Q[0][l][k+1] + 0.5f*Qx[0][j][i+1],
-                                         Q[1][l][k+1] + 0.5f*Qx[1][j][i+1],
-                                         Q[2][l][k+1] + 0.5f*Qx[2][j][i+1]);
+            const float3 Q_rl = make_float3(Q[0][l][k+1] - 0.5f*Qx[0][j][i+1],
+                                            Q[1][l][k+1] - 0.5f*Qx[1][j][i+1],
+                                            Q[2][l][k+1] - 0.5f*Qx[2][j][i+1]);
+            const float3 Q_rr = make_float3(Q[0][l][k+1] + 0.5f*Qx[0][j][i+1],
+                                            Q[1][l][k+1] + 0.5f*Qx[1][j][i+1],
+                                            Q[2][l][k+1] + 0.5f*Qx[2][j][i+1]);
                                          
-            const float3 Q_ll = (float3)(Q[0][l][k] - 0.5f*Qx[0][j][i],
-                                         Q[1][l][k] - 0.5f*Qx[1][j][i],
-                                         Q[2][l][k] - 0.5f*Qx[2][j][i]);
-            const float3 Q_lr = (float3)(Q[0][l][k] + 0.5f*Qx[0][j][i],
-                                         Q[1][l][k] + 0.5f*Qx[1][j][i],
-                                         Q[2][l][k] + 0.5f*Qx[2][j][i]);
+            const float3 Q_ll = make_float3(Q[0][l][k] - 0.5f*Qx[0][j][i],
+                                            Q[1][l][k] - 0.5f*Qx[1][j][i],
+                                            Q[2][l][k] - 0.5f*Qx[2][j][i]);
+            const float3 Q_lr = make_float3(Q[0][l][k] + 0.5f*Qx[0][j][i],
+                                            Q[1][l][k] + 0.5f*Qx[1][j][i],
+                                            Q[2][l][k] + 0.5f*Qx[2][j][i]);
                                     
             //Evolve half a timestep (predictor step)
             const float3 Q_r_bar = Q_rl + dt_/(2.0f*dx_) * (F_func(Q_rl, g_) - F_func(Q_rr, g_));
@@ -71,9 +71,10 @@ void computeFluxF(__local float Q[3][block_height+4][block_width+4],
     }    
 }
 
-void computeFluxG(__local float Q[3][block_height+4][block_width+4],
-                  __local float Qy[3][block_height+2][block_width+2],
-                  __local float G[3][block_height+1][block_width+1],
+__device__
+void computeFluxG(float Q[3][block_height+4][block_width+4],
+                  float Qy[3][block_height+2][block_width+2],
+                  float G[3][block_height+1][block_width+1],
                   const float g_, const float dy_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -86,19 +87,19 @@ void computeFluxG(__local float Q[3][block_height+4][block_width+4],
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
             //NOte that hu and hv are swapped ("transposing" the domain)!
-            const float3 Q_rl = (float3)(Q[0][l+1][k] - 0.5f*Qy[0][j+1][i],
-                                         Q[2][l+1][k] - 0.5f*Qy[2][j+1][i],
-                                         Q[1][l+1][k] - 0.5f*Qy[1][j+1][i]);
-            const float3 Q_rr = (float3)(Q[0][l+1][k] + 0.5f*Qy[0][j+1][i],
-                                         Q[2][l+1][k] + 0.5f*Qy[2][j+1][i],
-                                         Q[1][l+1][k] + 0.5f*Qy[1][j+1][i]);
+            const float3 Q_rl = make_float3(Q[0][l+1][k] - 0.5f*Qy[0][j+1][i],
+                                            Q[2][l+1][k] - 0.5f*Qy[2][j+1][i],
+                                            Q[1][l+1][k] - 0.5f*Qy[1][j+1][i]);
+            const float3 Q_rr = make_float3(Q[0][l+1][k] + 0.5f*Qy[0][j+1][i],
+                                            Q[2][l+1][k] + 0.5f*Qy[2][j+1][i],
+                                            Q[1][l+1][k] + 0.5f*Qy[1][j+1][i]);
                                         
-            const float3 Q_ll = (float3)(Q[0][l][k] - 0.5f*Qy[0][j][i],
-                                         Q[2][l][k] - 0.5f*Qy[2][j][i],
-                                         Q[1][l][k] - 0.5f*Qy[1][j][i]);
-            const float3 Q_lr = (float3)(Q[0][l][k] + 0.5f*Qy[0][j][i],
-                                         Q[2][l][k] + 0.5f*Qy[2][j][i],
-                                         Q[1][l][k] + 0.5f*Qy[1][j][i]);
+            const float3 Q_ll = make_float3(Q[0][l][k] - 0.5f*Qy[0][j][i],
+                                            Q[2][l][k] - 0.5f*Qy[2][j][i],
+                                            Q[1][l][k] - 0.5f*Qy[1][j][i]);
+            const float3 Q_lr = make_float3(Q[0][l][k] + 0.5f*Qy[0][j][i],
+                                            Q[2][l][k] + 0.5f*Qy[2][j][i],
+                                            Q[1][l][k] + 0.5f*Qy[1][j][i]);
                                      
             //Evolve half a timestep (predictor step)
             const float3 Q_r_bar = Q_rl + dt_/(2.0f*dy_) * (F_func(Q_rl, g_) - F_func(Q_rr, g_));
@@ -122,7 +123,7 @@ void computeFluxG(__local float Q[3][block_height+4][block_width+4],
 /**
   * This unsplit kernel computes the 2D numerical scheme with a TVD RK2 time integration scheme
   */
-__kernel void swe_2D(
+__global__ void KP07DimsplitKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_,
@@ -132,20 +133,20 @@ __kernel void swe_2D(
         int step_,
         
         //Input h^n
-        __global float* h0_ptr_, int h0_pitch_,
-        __global float* hu0_ptr_, int hu0_pitch_,
-        __global float* hv0_ptr_, int hv0_pitch_,
+        float* h0_ptr_, int h0_pitch_,
+        float* hu0_ptr_, int hu0_pitch_,
+        float* hv0_ptr_, int hv0_pitch_,
         
         //Output h^{n+1}
-        __global float* h1_ptr_, int h1_pitch_,
-        __global float* hu1_ptr_, int hu1_pitch_,
-        __global float* hv1_ptr_, int hv1_pitch_) {
+        float* h1_ptr_, int h1_pitch_,
+        float* hu1_ptr_, int hu1_pitch_,
+        float* hv1_ptr_, int hv1_pitch_) {
         
         
     //Shared memory variables
-    __local float Q[3][block_height+4][block_width+4];
-    __local float Qx[3][block_height+2][block_width+2];
-    __local float F[3][block_height+1][block_width+1];
+    __shared__ float Q[3][block_height+4][block_width+4];
+    __shared__ float Qx[3][block_height+2][block_width+2];
+    __shared__ float F[3][block_height+1][block_width+1];
     
     
     
@@ -154,12 +155,12 @@ __kernel void swe_2D(
                hu0_ptr_, hu0_pitch_,
                hv0_ptr_, hv0_pitch_,
                Q, nx_, ny_);
-    barrier(CLK_LOCAL_MEM_FENCE);
+    __syncthreads();
     
     
     //Fix boundary conditions
     noFlowBoundary2(Q, nx_, ny_);
-    barrier(CLK_LOCAL_MEM_FENCE);
+    __syncthreads();
     
     
     
@@ -167,45 +168,45 @@ __kernel void swe_2D(
     if (step_ == 0) {
         //Compute fluxes along the x axis and evolve
         minmodSlopeX(Q, Qx, theta_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveF2(Q, F, nx_, ny_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Set boundary conditions
         noFlowBoundary2(Q, nx_, ny_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Compute fluxes along the y axis and evolve
         minmodSlopeY(Q, Qx, theta_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveG2(Q, F, nx_, ny_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
     }
     //Step 1 => evolve y first, then x
     else {
         //Compute fluxes along the y axis and evolve
         minmodSlopeY(Q, Qx, theta_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveG2(Q, F, nx_, ny_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Set boundary conditions
         noFlowBoundary2(Q, nx_, ny_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Compute fluxes along the x axis and evolve
         minmodSlopeX(Q, Qx, theta_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveF2(Q, F, nx_, ny_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
     }
     
     
