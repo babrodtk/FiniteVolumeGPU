@@ -36,9 +36,10 @@ void computeFluxF(float Q[3][block_height+4][block_width+4],
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height; j+=get_local_size(1)) {
+    {
+        int j=ty;
         const int l = j + 2; //Skip ghost cells
-        for (int i=tx; i<block_width+1; i+=get_local_size(0)) {
+        for (int i=tx; i<block_width+1; i+=block_width) {
             const int k = i + 1;
             // Q at interface from the right and left
             const float3 Qp = make_float3(Q[0][l][k+1] - 0.5f*Qx[0][j][i+1],
@@ -66,9 +67,10 @@ void computeFluxG(float Q[3][block_height+4][block_width+4],
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height+1; j+=get_local_size(1)) {
+    for (int j=ty; j<block_height+1; j+=block_height) {
         const int l = j + 1;
-        for (int i=tx; i<block_width; i+=get_local_size(0)) {            
+        {
+            int i=tx;
             const int k = i + 2; //Skip ghost cells
             // Q at interface from the right and left
             // Note that we swap hu and hv

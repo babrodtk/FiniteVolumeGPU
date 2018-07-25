@@ -60,17 +60,6 @@ __device__ int get_global_id(int dim) {
 }
 
 
-__device__ int get_local_size(int dim) {
-    switch(dim) {
-        case 0: return blockDim.x;
-        case 1: return blockDim.y;
-        case 2: return blockDim.z;
-        default: return -1;
-    }
-}
-
-
-
 /**
   * Float3 operators 
   */
@@ -111,11 +100,11 @@ __device__ void readBlock1(float* h_ptr_, int h_pitch_,
     const int ty = get_local_id(1);
     
     //Index of block within domain
-    const int bx = get_local_size(0) * get_group_id(0);
-    const int by = get_local_size(1) * get_group_id(1);
+    const int bx = block_width * get_group_id(0);
+    const int by = block_height * get_group_id(1);
     
     //Read into shared memory
-    for (int j=ty; j<block_height+2; j+=get_local_size(1)) {
+    for (int j=ty; j<block_height+2; j+=block_height) {
         const int l = clamp(by + j, 0, ny_+1); // Out of bounds
         
         //Compute the pointer to current row in the arrays
@@ -123,7 +112,7 @@ __device__ void readBlock1(float* h_ptr_, int h_pitch_,
         float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
         float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
         
-        for (int i=tx; i<block_width+2; i+=get_local_size(0)) {
+        for (int i=tx; i<block_width+2; i+=block_width) {
             const int k = clamp(bx + i, 0, nx_+1); // Out of bounds
             
             Q[0][j][i] = h_row[k];
@@ -150,11 +139,11 @@ __device__ void readBlock2(float* h_ptr_, int h_pitch_,
     const int ty = get_local_id(1);
     
     //Index of block within domain
-    const int bx = get_local_size(0) * get_group_id(0);
-    const int by = get_local_size(1) * get_group_id(1);
+    const int bx = block_width * get_group_id(0);
+    const int by = block_height * get_group_id(1);
     
     //Read into shared memory
-    for (int j=ty; j<block_height+4; j+=get_local_size(1)) {
+    for (int j=ty; j<block_height+4; j+=block_height) {
         const int l = clamp(by + j, 0, ny_+3); // Out of bounds
         
         //Compute the pointer to current row in the arrays
@@ -162,7 +151,7 @@ __device__ void readBlock2(float* h_ptr_, int h_pitch_,
         float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
         float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
         
-        for (int i=tx; i<block_width+4; i+=get_local_size(0)) {
+        for (int i=tx; i<block_width+4; i+=block_width) {
             const int k = clamp(bx + i, 0, nx_+3); // Out of bounds
             
             Q[0][j][i] = h_row[k];
@@ -504,9 +493,10 @@ __device__ void minmodSlopeX(float  Q[3][block_height+4][block_width+4],
     const int ty = get_local_id(1);
     
     //Reconstruct slopes along x axis
-    for (int j=ty; j<block_height; j+=get_local_size(1)) {
+    {
+        const int j = ty;
         const int l = j + 2; //Skip ghost cells
-        for (int i=tx; i<block_width+2; i+=get_local_size(0)) {
+        for (int i=tx; i<block_width+2; i+=block_width) {
             const int k = i + 1;
             for (int p=0; p<3; ++p) {
                 Qx[p][j][i] = minmodSlope(Q[p][l][k-1], Q[p][l][k], Q[p][l][k+1], theta_);
@@ -526,9 +516,10 @@ __device__ void minmodSlopeY(float  Q[3][block_height+4][block_width+4],
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height+2; j+=get_local_size(1)) {
+    for (int j=ty; j<block_height+2; j+=block_height) {
         const int l = j + 1;
-        for (int i=tx; i<block_width; i+=get_local_size(0)) {            
+        {
+            const int i = tx;
             const int k = i + 2; //Skip ghost cells
             for (int p=0; p<3; ++p) {
                 Qy[p][j][i] = minmodSlope(Q[p][l-1][k], Q[p][l][k], Q[p][l+1][k], theta_);

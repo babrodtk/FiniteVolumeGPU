@@ -38,9 +38,10 @@ void computeFluxF(float Q[3][block_height+4][block_width+4],
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height; j+=get_local_size(1)) {
+    {
+        const int j=ty;
         const int l = j + 2; //Skip ghost cells
-        for (int i=tx; i<block_width+1; i+=get_local_size(0)) {
+        for (int i=tx; i<block_width+1; i+=block_width) {
             const int k = i + 1;
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
@@ -89,9 +90,10 @@ void computeFluxG(float Q[3][block_height+4][block_width+4],
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height+1; j+=get_local_size(1)) {
+    for (int j=ty; j<block_height+1; j+=block_height) {
         const int l = j + 1;
-        for (int i=tx; i<block_width; i+=get_local_size(0)) {            
+        { 
+            int i=tx;
             const int k = i + 2; //Skip ghost cells
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
