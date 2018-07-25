@@ -59,7 +59,7 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
 
 
 /**
-  * Computes the flux along the x axis for all faces
+  * Computes the flux along the y axis for all faces
   */
 __device__
 void computeFluxG(float Q[3][block_height+2][block_width+2],
@@ -147,6 +147,8 @@ __global__ void HLLKernel(
     evolveG1(Q, F, nx_, ny_, dy_, dt_);
     __syncthreads();
     
+    
+    //Q[0][get_local_id(1) + 1][get_local_id(0) + 1] += 0.1;
     
     
     

@@ -31,16 +31,12 @@ from SWESimulators import Common
 
 
 
-        
-        
-        
-        
-        
-        
+
+
 
 
 """
-Class that solves the SW equations using the Forward-Backward linear scheme
+Class that solves the SW equations using the Lax Friedrichs scheme
 """
 class LxF:
 
@@ -63,7 +59,7 @@ class LxF:
                  g, \
                  block_width=16, block_height=16):
         #Create a CUDA stream
-        self.stream = cuda.Stream()
+        self.stream = None #cuda.Stream()
 
         #Get kernels
         self.lxf_module = Common.get_kernel("LxF_kernel.cu", block_width, block_height)
@@ -94,8 +90,8 @@ class LxF:
         #Compute kernel launch parameters
         self.local_size = (block_width, block_height, 1) 
         self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0])) * self.local_size[0]), \
-                       int(np.ceil(self.ny / float(self.local_size[1])) * self.local_size[1]) \
+                       int(np.ceil(self.nx / float(self.local_size[0]))), \
+                       int(np.ceil(self.ny / float(self.local_size[1]))) \
                       ) 
     
     

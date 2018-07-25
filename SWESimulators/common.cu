@@ -90,7 +90,6 @@ inline __device__ float3 operator+(const float3 a, const float3 b) {
     return make_float3(a.x+b.x, a.y+b.y, a.z+b.z);
 }
 
-
 inline __device__ __host__ float clamp(const float f, const float a, const float b) {
     return fmaxf(a, fminf(f, b));
 }
@@ -834,13 +833,13 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     
     // Compute the r parameters for the flux limiter
     const float rh_1 = (c_1 > 0.0f) ? rh_m : rh_p; 
-    const float rv_1 = (c_1 > 0.0f) ? rv_m : rv_p; 
+    //const float rv_1 = (c_1 > 0.0f) ? rv_m : rv_p; 
     
-    const float rh_2 = (c_2 > 0.0f) ? rh_m : rh_p; 
+    //const float rh_2 = (c_2 > 0.0f) ? rh_m : rh_p; 
     const float rv_2 = (c_2 > 0.0f) ? rv_m : rv_p; 
     
     const float rh_3 = (c_3 > 0.0f) ? rh_m : rh_p;
-    const float rv_3 = (c_3 > 0.0f) ? rv_m : rv_p;
+    //const float rv_3 = (c_3 > 0.0f) ? rv_m : rv_p;
     
     // Compute the limiter
     // We use h for the nonlinear waves, and v for the middle shear wave 

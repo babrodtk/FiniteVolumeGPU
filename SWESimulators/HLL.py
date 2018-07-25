@@ -30,9 +30,8 @@ from SWESimulators import Common
 
 
 
-        
-        
-        
+
+
 
 
 """
@@ -43,8 +42,8 @@ class HLL:
     """
     Initialization routine
     h0: Water depth incl ghost cells, (nx+1)*(ny+1) cells
-    u0: Initial momentum along x-axis incl ghost cells, (nx+1)*(ny+1) cells
-    v0: Initial momentum along y-axis incl ghost cells, (nx+1)*(ny+1) cells
+    hu0: Initial momentum along x-axis incl ghost cells, (nx+1)*(ny+1) cells
+    hv0: Initial momentum along y-axis incl ghost cells, (nx+1)*(ny+1) cells
     nx: Number of cells along x-axis
     ny: Number of cells along y-axis
     dx: Grid cell spacing along x-axis (20 000 m)
@@ -90,8 +89,8 @@ class HLL:
         #Compute kernel launch parameters
         self.local_size = (block_width, block_height, 1) 
         self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0])) * self.local_size[0]), \
-                       int(np.ceil(self.ny / float(self.local_size[1])) * self.local_size[1]) \
+                       int(np.ceil(self.nx / float(self.local_size[0]))), \
+                       int(np.ceil(self.ny / float(self.local_size[1]))) \
                       ) 
     
     

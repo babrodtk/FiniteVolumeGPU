@@ -109,18 +109,6 @@ __global__ void FORCEKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
-        
-    //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
-    
-    //Index of block within domain
-    const int bx = get_local_size(0) * get_group_id(0);
-    const int by = get_local_size(1) * get_group_id(1);
-
-    //Index of cell within domain
-    const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
-    const int tj = get_global_id(1) + 1;
     
     __shared__ float Q[3][block_height+2][block_width+2];
     __shared__ float F[3][block_height+1][block_width+1];
