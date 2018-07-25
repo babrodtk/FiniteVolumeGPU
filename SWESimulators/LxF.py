@@ -60,7 +60,7 @@ class LxF:
                  g, \
                  block_width=16, block_height=16):
         #Create a CUDA stream
-        self.stream = None #cuda.Stream()
+        self.stream = cuda.Stream()
 
         #Get kernels
         self.lxf_module = context.get_kernel("LxF_kernel.cu", block_width, block_height)
