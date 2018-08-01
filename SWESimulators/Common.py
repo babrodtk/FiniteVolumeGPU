@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 import time
+import re
 
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
@@ -36,39 +37,72 @@ class CudaContext(object):
                 print("=== WARNING ===")
         else:
             self.cuda_context = self.cuda_device.make_context(flags=cuda.ctx_flags.SCHED_AUTO)
+        
+        if (self.verbose):
+            print("Created context <" + str(self.cuda_context.handle) + ">")
             
     
     def __del__(self, *args):
         if self.verbose:
-            print("Cleaning up CUDA context")
+            print("Cleaning up CUDA context <" + str(self.cuda_context.handle) + ">")
             
-        self.cuda_context.detach()
-        cuda.Context.pop()
+        # Loop over all contexts in stack, and remove "this"
+        other_contexts = []
+        while (cuda.Context.get_current() != None):
+            context = cuda.Context.get_current()
+            if (self.verbose):
+                if (context.handle != self.cuda_context.handle):
+                    print(" `-> <" + str(self.cuda_context.handle) + "> Popping context <" + str(context.handle) + "> which we do not own")
+                    other_contexts = [context] + other_contexts
+                    cuda.Context.pop()
+                else:
+                    print(" `-> <" + str(self.cuda_context.handle) + "> Popping context <" + str(context.handle) + "> (ourselves)")
+                    cuda.Context.pop()
 
+        # Add all the contexts we popped that were not our own
+        for context in other_contexts:
+            if (self.verbose):
+                print(" `-> <" + str(self.cuda_context.handle) + "> Pushing <" + str(context.handle) + ">")
+            cuda.Context.push(context)
             
+        if (self.verbose):
+            print(" `-> <" + str(self.cuda_context.handle) + "> Detaching context")
+        self.cuda_context.detach()
+
+        
+    
     """
     Reads a text file and creates an OpenCL kernel from that
     """
     def get_kernel(self, kernel_filename, block_width, block_height):
         # Generate a kernel ID for our cache
         module_path = os.path.dirname(os.path.realpath(__file__))
-        fullpath = os.path.join(module_path, kernel_filename)
-        kernel_date = os.path.getmtime(fullpath)
-        with open(fullpath, "r") as kernel_file:
-            kernel_hash = hash(kernel_file.read())
-        kernel_id = kernel_filename + ":" + str(kernel_hash) + ":" + str(kernel_date)
+        
+        kernel_hash = ""
+        
+        # Loop over file and includes, and check if something has changed
+        files = [kernel_filename]
+        while len(files):
+            filename = os.path.join(module_path, files.pop())
+            modified = os.path.getmtime(filename)
+            with open(filename, "r") as file:
+                file_str = file.read()
+                file_hash = filename + "_" + str(hash(file_str)) + ":" + str(modified) + "--"
+                includes = re.findall('^\W*#include\W+(.+?)\W*$', file_str, re.M)
+                files = files + includes #WARNING FIXME This will not work with circular includes
+                
+            kernel_hash = kernel_hash + file_hash
     
-        # Simple caching to keep keep from recompiling kernels
-        if (kernel_id not in self.kernels.keys()):
+        # Recompile kernel if file or includes have changed
+        if (kernel_hash not in self.kernels.keys()):
             #Create define string
             define_string = "#define block_width " + str(block_width) + "\n"
             define_string += "#define block_height " + str(block_height) + "\n\n"
             
+            kernel_string = define_string + '#include "' + os.path.join(module_path, kernel_filename) + '"'
+            self.kernels[kernel_hash] = cuda_compiler.SourceModule(kernel_string, include_dirs=[module_path])
             
-            kernel_string = define_string + '#include "' + fullpath + '"'
-            self.kernels[kernel_id] = cuda_compiler.SourceModule(kernel_string, include_dirs=[module_path])
-            
-        return self.kernels[kernel_id]
+        return self.kernels[kernel_hash]
     
     """
     Clears the kernel cache (useful for debugging & development)

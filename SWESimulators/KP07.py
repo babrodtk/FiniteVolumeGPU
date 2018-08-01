@@ -96,8 +96,8 @@ class KP07:
         self.dy = np.float32(dy)
         self.dt = np.float32(dt)
         self.g = np.float32(g)
-        self.r = np.float32(r)
         self.theta = np.float32(theta)
+        self.r = np.float32(r)
         self.use_rk2 = use_rk2
         
         #Initialize time
