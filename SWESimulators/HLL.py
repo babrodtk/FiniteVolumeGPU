@@ -21,14 +21,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 import numpy as np
-import pyopencl as cl #OpenCL in Python
+
+import pycuda.compiler as cuda_compiler
+import pycuda.gpuarray
+import pycuda.driver as cuda
+
 from SWESimulators import Common
 
 
 
-        
-        
-        
+
+
 
 
 """
@@ -39,8 +42,8 @@ class HLL:
     """
     Initialization routine
     h0: Water depth incl ghost cells, (nx+1)*(ny+1) cells
-    u0: Initial momentum along x-axis incl ghost cells, (nx+1)*(ny+1) cells
-    v0: Initial momentum along y-axis incl ghost cells, (nx+1)*(ny+1) cells
+    hu0: Initial momentum along x-axis incl ghost cells, (nx+1)*(ny+1) cells
+    hv0: Initial momentum along y-axis incl ghost cells, (nx+1)*(ny+1) cells
     nx: Number of cells along x-axis
     ny: Number of cells along y-axis
     dx: Grid cell spacing along x-axis (20 000 m)
@@ -49,24 +52,27 @@ class HLL:
     g: Gravitational accelleration (9.81 m/s^2)
     """
     def __init__(self, \
-                 cl_ctx,
-                 h0, u0, v0, \
+                 context, \
+                 h0, hu0, hv0, \
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
                  block_width=16, block_height=16):
-        self.cl_ctx = cl_ctx
-
-        #Create an OpenCL command queue
-        self.cl_queue = cl.CommandQueue(self.cl_ctx)
+        #Create a CUDA stream
+        self.stream = cuda.Stream()
 
         #Get kernels
-        self.lxf_kernel = Common.get_kernel(self.cl_ctx, "HLL_kernel.opencl", block_width, block_height)
+        self.hll_module = context.get_kernel("HLL_kernel.cu", block_width, block_height)
+        self.hll_kernel = self.hll_module.get_function("HLLKernel")
+        self.hll_kernel.prepare("iiffffPiPiPiPiPiPi")
         
         #Create data by uploading to device
         ghost_cells_x = 1
         ghost_cells_y = 1
-        self.cl_data = Common.SWEDataArkawaA(self.cl_ctx, nx, ny, ghost_cells_x, ghost_cells_y, h0, u0, v0)
+        self.data = Common.SWEDataArakawaA(self.stream, \
+                            nx, ny, \
+                            ghost_cells_x, ghost_cells_y, \
+                            h0, hu0, hv0)
         
         #Save input parameters
         #Notice that we need to specify them in the correct dataformat for the
@@ -82,10 +88,10 @@ class HLL:
         self.t = np.float32(0.0)
         
         #Compute kernel launch parameters
-        self.local_size = (block_width, block_height) 
+        self.local_size = (block_width, block_height, 1) 
         self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0])) * self.local_size[0]), \
-                       int(np.ceil(self.ny / float(self.local_size[1])) * self.local_size[1]) \
+                       int(np.ceil(self.nx / float(self.local_size[0]))), \
+                       int(np.ceil(self.ny / float(self.local_size[1]))) \
                       ) 
     
     
@@ -105,20 +111,20 @@ class HLL:
             if (local_dt <= 0.0):
                 break
         
-            self.lxf_kernel.swe_2D(self.cl_queue, self.global_size, self.local_size, \
+            self.hll_kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
                     self.nx, self.ny, \
                     self.dx, self.dy, local_dt, \
                     self.g, \
-                    self.cl_data.h0.data,  self.cl_data.h0.pitch,  \
-                    self.cl_data.hu0.data, self.cl_data.hu0.pitch, \
-                    self.cl_data.hv0.data, self.cl_data.hv0.pitch, \
-                    self.cl_data.h1.data,  self.cl_data.h1.pitch,  \
-                    self.cl_data.hu1.data, self.cl_data.hu1.pitch, \
-                    self.cl_data.hv1.data, self.cl_data.hv1.pitch)
+                    self.data.h0.data.gpudata,  self.data.h0.pitch,  \
+                    self.data.hu0.data.gpudata, self.data.hu0.pitch, \
+                    self.data.hv0.data.gpudata, self.data.hv0.pitch, \
+                    self.data.h1.data.gpudata,  self.data.h1.pitch,  \
+                    self.data.hu1.data.gpudata, self.data.hu1.pitch, \
+                    self.data.hv1.data.gpudata, self.data.hv1.pitch)
                 
             self.t += local_dt
             
-            self.cl_data.swap()
+            self.data.swap()
         
         return self.t
     
@@ -127,5 +133,5 @@ class HLL:
     
     
     def download(self):
-        return self.cl_data.download(self.cl_queue)
+        return self.data.download(self.stream)
 

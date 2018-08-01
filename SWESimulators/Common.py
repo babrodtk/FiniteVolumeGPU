@@ -1,79 +1,159 @@
-import pyopencl
 import os
+
 import numpy as np
+import time
+import re
+
+import pycuda.compiler as cuda_compiler
+import pycuda.gpuarray
+import pycuda.driver as cuda
 
 """
-Static function which reads a text file and creates an OpenCL kernel from that
+Class which keeps track of the CUDA context and some helper functions
 """
-def get_kernel(cl_ctx, kernel_filename, block_width, block_height):
-    import datetime
-    
-    #Create define string
-    define_string = "#define block_width " + str(block_width) + "\n"
-    define_string += "#define block_height " + str(block_height) + "\n\n"
-    define_string += "#ifndef my_variable_to_force_recompilation\n"
-    define_string += "#define my_variable_to_force_recompilation " + datetime.datetime.now().strftime("%Y_%m_%d-%H_%M_%S") + "\n"
-    define_string += "#undef my_variable_to_force_recompilation \n"
-    define_string += "#endif\n\n"
-    
-    
-    def shellquote(s):
-        assert(cl_ctx.num_devices == 1)
-        platform_name = cl_ctx.devices[0].get_info(pyopencl.device_info.PLATFORM).name
-        platform_name = platform_name.upper()
-        if ('INTEL' in platform_name):
-            #Intel CL compiler doesn't like spaces in include paths. We have to escape them
-            return '"' + s.replace(" ", "\\ ") + '"'
-        elif ('NVIDIA' in platform_name):
-            #NVIDIA doesn't like double quoted paths...
-            #return "'" + s + "'"
-            return s
+class CudaContext(object):
+    def __init__(self, verbose=True, blocking=False):
+        self.verbose = verbose
+        self.blocking = blocking
+        self.kernels = {}
+        
+        cuda.init(flags=0)
+        
+        if (self.verbose):
+            print("CUDA version " + str(cuda.get_version()))
+            print("Driver version " + str(cuda.get_driver_version()))
+
+        self.cuda_device = cuda.Device(0)
+        if (self.verbose):
+            print("Using " + self.cuda_device.name())
+            print(" => compute capability: " + str(self.cuda_device.compute_capability()))
+            print(" => memory: " + str(self.cuda_device.total_memory() / (1024*1024)) + " MB")
+
+        if (self.blocking):
+            self.cuda_context = self.cuda_device.make_context(flags=cuda.ctx_flags.SCHED_BLOCKING_SYNC)
+            if (self.verbose):
+                print("=== WARNING ===")
+                print("Using blocking context")
+                print("=== WARNING ===")
+        else:
+            self.cuda_context = self.cuda_device.make_context(flags=cuda.ctx_flags.SCHED_AUTO)
+        
+        if (self.verbose):
+            print("Created context <" + str(self.cuda_context.handle) + ">")
             
-    module_path = os.path.dirname(os.path.realpath(__file__))
-    module_path_escaped = shellquote(module_path)
-    options = ['-I', module_path_escaped]
     
-    #Read the proper program
-    fullpath = os.path.join(module_path, kernel_filename)
-    with open(fullpath, "r") as kernel_file:
-        kernel_string = define_string + kernel_file.read()
-        kernel = pyopencl.Program(cl_ctx, kernel_string).build(options)
+    def __del__(self, *args):
+        if self.verbose:
+            print("Cleaning up CUDA context <" + str(self.cuda_context.handle) + ">")
+            
+        # Loop over all contexts in stack, and remove "this"
+        other_contexts = []
+        while (cuda.Context.get_current() != None):
+            context = cuda.Context.get_current()
+            if (self.verbose):
+                if (context.handle != self.cuda_context.handle):
+                    print(" `-> <" + str(self.cuda_context.handle) + "> Popping context <" + str(context.handle) + "> which we do not own")
+                    other_contexts = [context] + other_contexts
+                    cuda.Context.pop()
+                else:
+                    print(" `-> <" + str(self.cuda_context.handle) + "> Popping context <" + str(context.handle) + "> (ourselves)")
+                    cuda.Context.pop()
+
+        # Add all the contexts we popped that were not our own
+        for context in other_contexts:
+            if (self.verbose):
+                print(" `-> <" + str(self.cuda_context.handle) + "> Pushing <" + str(context.handle) + ">")
+            cuda.Context.push(context)
+            
+        if (self.verbose):
+            print(" `-> <" + str(self.cuda_context.handle) + "> Detaching context")
+        self.cuda_context.detach()
+
         
-    return kernel
     
+    """
+    Reads a text file and creates an OpenCL kernel from that
+    """
+    def get_kernel(self, kernel_filename, block_width, block_height):
+        # Generate a kernel ID for our cache
+        module_path = os.path.dirname(os.path.realpath(__file__))
+        
+        kernel_hash = ""
+        
+        # Loop over file and includes, and check if something has changed
+        files = [kernel_filename]
+        while len(files):
+            filename = os.path.join(module_path, files.pop())
+            modified = os.path.getmtime(filename)
+            with open(filename, "r") as file:
+                file_str = file.read()
+                file_hash = filename + "_" + str(hash(file_str)) + ":" + str(modified) + "--"
+                includes = re.findall('^\W*#include\W+(.+?)\W*$', file_str, re.M)
+                files = files + includes #WARNING FIXME This will not work with circular includes
+                
+            kernel_hash = kernel_hash + file_hash
     
+        # Recompile kernel if file or includes have changed
+        if (kernel_hash not in self.kernels.keys()):
+            #Create define string
+            define_string = "#define block_width " + str(block_width) + "\n"
+            define_string += "#define block_height " + str(block_height) + "\n\n"
+            
+            kernel_string = define_string + '#include "' + os.path.join(module_path, kernel_filename) + '"'
+            self.kernels[kernel_hash] = cuda_compiler.SourceModule(kernel_string, include_dirs=[module_path])
+            
+        return self.kernels[kernel_hash]
+    
+    """
+    Clears the kernel cache (useful for debugging & development)
+    """
+    def clear_kernel_cache(self):
+        self.kernels = {}
         
         
         
         
+class Timer(object):
+    def __init__(self, tag, verbose=True):
+        self.verbose = verbose
+        self.tag = tag
         
+    def __enter__(self):
+        self.start = time.time()
+        return self
+    
+    def __exit__(self, *args):
+        self.end = time.time()
+        self.secs = self.end - self.start
+        self.msecs = self.secs * 1000 # millisecs
+        if self.verbose:
+            print("=> " + self.tag + ' %f ms' % self.msecs)
         
         
 
 """
 Class that holds data 
 """
-class OpenCLArray2D:
+class CUDAArray2D:
     """
     Uploads initial data to the CL device
     """
-    def __init__(self, cl_ctx, nx, ny, halo_x, halo_y, data):
-        host_data = self.convert_to_float32(data)
+    def __init__(self, stream, nx, ny, halo_x, halo_y, data):
         
         self.nx = nx
         self.ny = ny
         self.nx_halo = nx + 2*halo_x
         self.ny_halo = ny + 2*halo_y
-        assert(host_data.shape[1] == self.nx_halo)
-        assert(host_data.shape[0] == self.ny_halo)
         
-        assert(data.shape == (self.ny_halo, self.nx_halo))
+        #Make sure data is in proper format
+        assert np.issubdtype(data.dtype, np.float32), "Wrong datatype: %s" % str(data.dtype)
+        assert not np.isfortran(data), "Wrong datatype (Fortran, expected C)"
+        assert data.shape == (self.ny_halo, self.nx_halo), "Wrong data shape: %s" % str(data.shape)
 
         #Upload data to the device
-        mf = pyopencl.mem_flags
-        self.data = pyopencl.Buffer(cl_ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=host_data)
+        self.data = pycuda.gpuarray.to_gpu_async(data, stream=stream)
         
-        self.bytes_per_float = host_data.itemsize
+        self.bytes_per_float = data.itemsize
         assert(self.bytes_per_float == 4)
         self.pitch = np.int32((self.nx_halo)*self.bytes_per_float)
         
@@ -81,26 +161,14 @@ class OpenCLArray2D:
     """
     Enables downloading data from CL device to Python
     """
-    def download(self, cl_queue):
-        #Allocate data on the host for result
-        host_data = np.empty((self.ny_halo, self.nx_halo), dtype=np.float32, order='C')
-        
+    def download(self, stream, async=False):
         #Copy data from device to host
-        pyopencl.enqueue_copy(cl_queue, host_data, self.data)
-        
-        #Return
-        return host_data
-
-    """
-    Converts to C-style float 32 array suitable for the GPU/OpenCL
-    """
-    @staticmethod
-    def convert_to_float32(data):
-        if (not np.issubdtype(data.dtype, np.float32) or np.isfortran(data)):
-            #print("Converting H0")
-            return data.astype(np.float32, order='C')
+        if (async):
+            host_data = self.data.get_async(stream=stream)
+            return host_data
         else:
-            return data
+            host_data = self.data.get(stream=stream)#, pagelocked=True) # pagelocked causes crash on windows at least
+            return host_data
 
         
         
@@ -111,20 +179,20 @@ class OpenCLArray2D:
         
         
 """
-A class representing an Akrawa A type (unstaggered, logically Cartesian) grid
+A class representing an Arakawa A type (unstaggered, logically Cartesian) grid
 """
-class SWEDataArkawaA:
+class SWEDataArakawaA:
     """
     Uploads initial data to the CL device
     """
-    def __init__(self, cl_ctx, nx, ny, halo_x, halo_y, h0, hu0, hv0):
-        self.h0  = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, h0)
-        self.hu0 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hu0)
-        self.hv0 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hv0)
+    def __init__(self, stream, nx, ny, halo_x, halo_y, h0, hu0, hv0):
+        self.h0  = CUDAArray2D(stream, nx, ny, halo_x, halo_y, h0)
+        self.hu0 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hu0)
+        self.hv0 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hv0)
         
-        self.h1  = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, h0)
-        self.hu1 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hu0)
-        self.hv1 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hv0)
+        self.h1  = CUDAArray2D(stream, nx, ny, halo_x, halo_y, h0)
+        self.hu1 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hu0)
+        self.hv1 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hv0)
 
     """
     Swaps the variables after a timestep has been completed
@@ -137,153 +205,11 @@ class SWEDataArkawaA:
     """
     Enables downloading data from CL device to Python
     """
-    def download(self, cl_queue):
-        h_cpu  = self.h0.download(cl_queue)
-        hu_cpu = self.hu0.download(cl_queue)
-        hv_cpu = self.hv0.download(cl_queue)
+    def download(self, stream):
+        h_cpu  = self.h0.download(stream, async=True)
+        hu_cpu = self.hu0.download(stream, async=True)
+        hv_cpu = self.hv0.download(stream, async=False)
         
         return h_cpu, hu_cpu, hv_cpu
         
         
-        
-        
-        
-        
-        
-        
-        
-        
-"""
-A class representing an Akrawa A type (unstaggered, logically Cartesian) grid
-"""
-class SWEDataArkawaA:
-    """
-    Uploads initial data to the CL device
-    """
-    def __init__(self, cl_ctx, nx, ny, halo_x, halo_y, h0, hu0, hv0):
-        self.h0  = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, h0)
-        self.hu0 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hu0)
-        self.hv0 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hv0)
-        
-        self.h1  = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, h0)
-        self.hu1 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hu0)
-        self.hv1 = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, hv0)
-
-    """
-    Swaps the variables after a timestep has been completed
-    """
-    def swap(self):
-        self.h1,  self.h0  = self.h0,  self.h1
-        self.hu1, self.hu0 = self.hu0, self.hu1
-        self.hv1, self.hv0 = self.hv0, self.hv1
-        
-    """
-    Enables downloading data from CL device to Python
-    """
-    def download(self, cl_queue):
-        h_cpu  = self.h0.download(cl_queue)
-        hu_cpu = self.hu0.download(cl_queue)
-        hv_cpu = self.hv0.download(cl_queue)
-        
-        return h_cpu, hu_cpu, hv_cpu
-        
-        
-
-
-        
-        
-        
-        
-"""
-A class representing an Akrawa C type (staggered, u fluxes on east/west faces, v fluxes on north/south faces) grid
-We use h as cell centers
-"""
-class SWEDataArkawaC:
-    """
-    Uploads initial data to the CL device
-    """
-    def __init__(self, cl_ctx, nx, ny, halo_x, halo_y, h0, hu0, hv0):
-        #FIXME: This at least works for 0 and 1 ghost cells, but not convinced it generalizes
-        assert(halo_x <= 1 and halo_y <= 1)
-        
-        self.h0   = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, h0)
-        self.hu0  = OpenCLArray2D(cl_ctx, nx+1, ny, 0, halo_y, hu0)
-        self.hv0  = OpenCLArray2D(cl_ctx, nx, ny+1, halo_x, 0, hv0)
-        
-        self.h1   = OpenCLArray2D(cl_ctx, nx, ny, halo_x, halo_y, h0)
-        self.hu1  = OpenCLArray2D(cl_ctx, nx+1, ny, 0, halo_y, hu0)
-        self.hv1  = OpenCLArray2D(cl_ctx, nx, ny+1, halo_x, 0, hv0)
-
-    """
-    Swaps the variables after a timestep has been completed
-    """
-    def swap(self):
-        #h is assumed to be constant (bottom topography really)
-        self.h1,  self.h0  = self.h0, self.h1
-        self.hu1, self.hu0 = self.hu0, self.hu1
-        self.hv1, self.hv0 = self.hv0, self.hv1
-        
-    """
-    Enables downloading data from CL device to Python
-    """
-    def download(self, cl_queue):
-        h_cpu  = self.h0.download(cl_queue)
-        hu_cpu = self.hu0.download(cl_queue)
-        hv_cpu = self.hv0.download(cl_queue)
-        
-        return h_cpu, hu_cpu, hv_cpu
-        
-        
-
-
-
-"""
-Class which represents different wind stresses
-"""
-class WindStressParams:
-
-    """
-    wind_type: TYpe of wind stress, 0=Uniform along shore, 1=bell shaped along shore, 2=moving cyclone
-    wind_tau0: Amplitude of wind stress (Pa)
-    wind_rho: Density of sea water (1025.0 kg / m^3)
-    wind_alpha: Offshore e-folding length (1/(10*dx) = 5e-6 m^-1)
-    wind_xm: Maximum wind stress for bell shaped wind stress
-    wind_Rc: Distance to max wind stress from center of cyclone (10dx = 200 000 m)
-    wind_x0: Initial x position of moving cyclone (dx*(nx/2) - u0*3600.0*48.0)
-    wind_y0: Initial y position of moving cyclone (dy*(ny/2) - v0*3600.0*48.0)
-    wind_u0: Translation speed along x for moving cyclone (30.0/sqrt(5.0))
-    wind_v0: Translation speed along y for moving cyclone (-0.5*u0)
-    """
-    def __init__(self, 
-                 type=99, # "no wind" \
-                 tau0=0, rho=0, alpha=0, xm=0, Rc=0, \
-                 x0=0, y0=0, \
-                 u0=0, v0=0):
-        self.type = np.int32(type)
-        self.tau0 = np.float32(tau0)
-        self.rho = np.float32(rho)
-        self.alpha = np.float32(alpha)
-        self.xm = np.float32(xm)
-        self.Rc = np.float32(Rc)
-        self.x0 = np.float32(x0)
-        self.y0 = np.float32(y0)
-        self.u0 = np.float32(u0)
-        self.v0 = np.float32(v0)
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 
-                 

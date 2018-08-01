@@ -24,30 +24,32 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 
-#include "common.opencl"
+#include "common.cu"
 
 
 
 /**
   * Computes the flux along the x axis for all faces
   */
-void computeFluxF(__local float Q[3][block_height+4][block_width+4],
-                  __local float F[3][block_height+1][block_width+1],
+__device__
+void computeFluxF(float Q[3][block_height+4][block_width+4],
+                  float F[3][block_height+1][block_width+1],
                   const float g_, const float dx_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
                       
-    for (int j=ty; j<block_height; j+=get_local_size(1)) {
+    {
+        int j=ty; 
         const int l = j + 2; //Skip ghost cells
-        for (int i=tx; i<block_width+1; i+=get_local_size(0)) {
+        for (int i=tx; i<block_width+1; i+=block_width) {
             const int k = i + 1;
             
             // Q at interface from the right and left
-            const float3 Ql2 = (float3)(Q[0][l][k-1], Q[1][l][k-1], Q[2][l][k-1]);
-            const float3 Ql1 = (float3)(Q[0][l][k  ], Q[1][l][k  ], Q[2][l][k  ]);
-            const float3 Qr1 = (float3)(Q[0][l][k+1], Q[1][l][k+1], Q[2][l][k+1]);
-            const float3 Qr2 = (float3)(Q[0][l][k+2], Q[1][l][k+2], Q[2][l][k+2]);
+            const float3 Ql2 = make_float3(Q[0][l][k-1], Q[1][l][k-1], Q[2][l][k-1]);
+            const float3 Ql1 = make_float3(Q[0][l][k  ], Q[1][l][k  ], Q[2][l][k  ]);
+            const float3 Qr1 = make_float3(Q[0][l][k+1], Q[1][l][k+1], Q[2][l][k+1]);
+            const float3 Qr2 = make_float3(Q[0][l][k+2], Q[1][l][k+2], Q[2][l][k+2]);
 
             // Computed flux
             const float3 flux = WAF_1D_flux(Ql2, Ql1, Qr1, Qr2, g_, dx_, dt_);
@@ -68,24 +70,26 @@ void computeFluxF(__local float Q[3][block_height+4][block_width+4],
 /**
   * Computes the flux along the y axis for all faces
   */
-void computeFluxG(__local float Q[3][block_height+4][block_width+4],
-                  __local float G[3][block_height+1][block_width+1],
+__device__
+void computeFluxG(float Q[3][block_height+4][block_width+4],
+                  float G[3][block_height+1][block_width+1],
                   const float g_, const float dy_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
     //Compute fluxes along the y axis
-    for (int j=ty; j<block_height+1; j+=get_local_size(1)) {
+    for (int j=ty; j<block_height+1; j+=block_height) {
         const int l = j + 1;
-        for (int i=tx; i<block_width; i+=get_local_size(0)) {            
+        {
+            int i=tx;
             const int k = i + 2; //Skip ghost cells
             // Q at interface from the right and left
             // Note that we swap hu and hv
-            const float3 Ql2 = (float3)(Q[0][l-1][k], Q[2][l-1][k], Q[1][l-1][k]);
-            const float3 Ql1 = (float3)(Q[0][l  ][k], Q[2][l  ][k], Q[1][l  ][k]);
-            const float3 Qr1 = (float3)(Q[0][l+1][k], Q[2][l+1][k], Q[1][l+1][k]);
-            const float3 Qr2 = (float3)(Q[0][l+2][k], Q[2][l+2][k], Q[1][l+2][k]);
+            const float3 Ql2 = make_float3(Q[0][l-1][k], Q[2][l-1][k], Q[1][l-1][k]);
+            const float3 Ql1 = make_float3(Q[0][l  ][k], Q[2][l  ][k], Q[1][l  ][k]);
+            const float3 Qr1 = make_float3(Q[0][l+1][k], Q[2][l+1][k], Q[1][l+1][k]);
+            const float3 Qr2 = make_float3(Q[0][l+2][k], Q[2][l+2][k], Q[1][l+2][k]);
             
             // Computed flux
             // Note that we swap back
@@ -110,23 +114,23 @@ void computeFluxG(__local float Q[3][block_height+4][block_width+4],
 
 
 
-__kernel void swe_2D(
+__global__ void WAFKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_, int step_,
         
         //Input h^n
-        __global float* h0_ptr_, int h0_pitch_,
-        __global float* hu0_ptr_, int hu0_pitch_,
-        __global float* hv0_ptr_, int hv0_pitch_,
+        float* h0_ptr_, int h0_pitch_,
+        float* hu0_ptr_, int hu0_pitch_,
+        float* hv0_ptr_, int hv0_pitch_,
         
         //Output h^{n+1}
-        __global float* h1_ptr_, int h1_pitch_,
-        __global float* hu1_ptr_, int hu1_pitch_,
-        __global float* hv1_ptr_, int hv1_pitch_) {    
+        float* h1_ptr_, int h1_pitch_,
+        float* hu1_ptr_, int hu1_pitch_,
+        float* hv1_ptr_, int hv1_pitch_) {    
     //Shared memory variables
-    __local float Q[3][block_height+4][block_width+4];
-    __local float F[3][block_height+1][block_width+1];
+    __shared__ float Q[3][block_height+4][block_width+4];
+    __shared__ float F[3][block_height+1][block_width+1];
     
     
     
@@ -135,12 +139,12 @@ __kernel void swe_2D(
                hu0_ptr_, hu0_pitch_,
                hv0_ptr_, hv0_pitch_,
                Q, nx_, ny_);
-    barrier(CLK_LOCAL_MEM_FENCE);
+    __syncthreads();
     
     
     //Set boundary conditions
     noFlowBoundary2(Q, nx_, ny_);
-    barrier(CLK_LOCAL_MEM_FENCE);
+    __syncthreads();
     
     
     
@@ -148,37 +152,37 @@ __kernel void swe_2D(
     if (step_ == 0) {
         //Compute fluxes along the x axis and evolve
         computeFluxF(Q, F, g_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveF2(Q, F, nx_, ny_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Fix boundary conditions
         noFlowBoundary2(Q, nx_, ny_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Compute fluxes along the y axis and evolve
         computeFluxG(Q, F, g_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveG2(Q, F, nx_, ny_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
     }
     //Step 1 => evolve y first, then x
     else {
         //Compute fluxes along the y axis and evolve
         computeFluxG(Q, F, g_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveG2(Q, F, nx_, ny_, dy_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Fix boundary conditions
         noFlowBoundary2(Q, nx_, ny_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         
         //Compute fluxes along the x axis and evolve
         computeFluxF(Q, F, g_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
         evolveF2(Q, F, nx_, ny_, dx_, dt_);
-        barrier(CLK_LOCAL_MEM_FENCE);
+        __syncthreads();
     }
 
 

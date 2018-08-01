@@ -22,21 +22,21 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 import numpy as np
-import pyopencl as cl #OpenCL in Python
+
+import pycuda.compiler as cuda_compiler
+import pycuda.gpuarray
+import pycuda.driver as cuda
+
 from SWESimulators import Common
 
 
 
-        
-        
-        
-        
-        
-        
+
+
 
 
 """
-Class that solves the SW equations using the Forward-Backward linear scheme
+Class that solves the SW equations using the Lax Friedrichs scheme
 """
 class LxF:
 
@@ -53,24 +53,27 @@ class LxF:
     g: Gravitational accelleration (9.81 m/s^2)
     """
     def __init__(self, \
-                 cl_ctx, \
+                 context, \
                  h0, hu0, hv0, \
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
                  block_width=16, block_height=16):
-        self.cl_ctx = cl_ctx
-
-        #Create an OpenCL command queue
-        self.cl_queue = cl.CommandQueue(self.cl_ctx)
+        #Create a CUDA stream
+        self.stream = cuda.Stream()
 
         #Get kernels
-        self.lxf_kernel = Common.get_kernel(self.cl_ctx, "LxF_kernel.opencl", block_width, block_height)
+        self.lxf_module = context.get_kernel("LxF_kernel.cu", block_width, block_height)
+        self.lxf_kernel = self.lxf_module.get_function("LxFKernel")
+        self.lxf_kernel.prepare("iiffffPiPiPiPiPiPi")
         
         #Create data by uploading to device
         ghost_cells_x = 1
         ghost_cells_y = 1
-        self.cl_data = Common.SWEDataArkawaA(self.cl_ctx, nx, ny, ghost_cells_x, ghost_cells_y, h0, hu0, hv0)
+        self.data = Common.SWEDataArakawaA(self.stream, \
+                            nx, ny, \
+                            ghost_cells_x, ghost_cells_y, \
+                            h0, hu0, hv0)
         
         #Save input parameters
         #Notice that we need to specify them in the correct dataformat for the
@@ -86,10 +89,10 @@ class LxF:
         self.t = np.float32(0.0)
         
         #Compute kernel launch parameters
-        self.local_size = (block_width, block_height) 
+        self.local_size = (block_width, block_height, 1) 
         self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0])) * self.local_size[0]), \
-                       int(np.ceil(self.ny / float(self.local_size[1])) * self.local_size[1]) \
+                       int(np.ceil(self.nx / float(self.local_size[0]))), \
+                       int(np.ceil(self.ny / float(self.local_size[1]))) \
                       ) 
     
     
@@ -109,20 +112,20 @@ class LxF:
             if (local_dt <= 0.0):
                 break
         
-            self.lxf_kernel.swe_2D(self.cl_queue, self.global_size, self.local_size, \
+            self.lxf_kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
                     self.nx, self.ny, \
                     self.dx, self.dy, local_dt, \
                     self.g, \
-                    self.cl_data.h0.data, self.cl_data.h0.pitch, \
-                    self.cl_data.hu0.data, self.cl_data.hu0.pitch, \
-                    self.cl_data.hv0.data, self.cl_data.hv0.pitch, \
-                    self.cl_data.h1.data, self.cl_data.h1.pitch, \
-                    self.cl_data.hu1.data, self.cl_data.hu1.pitch, \
-                    self.cl_data.hv1.data, self.cl_data.hv1.pitch)
+                    self.data.h0.data.gpudata, self.data.h0.pitch, \
+                    self.data.hu0.data.gpudata, self.data.hu0.pitch, \
+                    self.data.hv0.data.gpudata, self.data.hv0.pitch, \
+                    self.data.h1.data.gpudata, self.data.h1.pitch, \
+                    self.data.hu1.data.gpudata, self.data.hu1.pitch, \
+                    self.data.hv1.data.gpudata, self.data.hv1.pitch)
                 
             self.t += local_dt
             
-            self.cl_data.swap()
+            self.data.swap()
         
         return self.t
         
@@ -131,5 +134,5 @@ class LxF:
     
     
     def download(self):
-        return self.cl_data.download(self.cl_queue)
+        return self.data.download(self.stream)
 
