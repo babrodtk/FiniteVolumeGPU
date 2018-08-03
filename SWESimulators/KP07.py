@@ -174,7 +174,7 @@ class KP07:
             self.t += local_dt
             
         
-        return self.t
+        return self.t, n
     
     
     

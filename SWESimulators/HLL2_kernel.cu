@@ -64,7 +64,7 @@ void computeFluxF(float Q[3][block_height+4][block_width+4],
             const float3 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, g_) - F_func(Q_lr, g_));
 
             // Compute flux based on prediction
-            const float3 flux = HLL_flux(Q_l_bar, Q_r_bar, g_);
+            const float3 flux = HLLC_flux(Q_l_bar, Q_r_bar, g_);
             
             //Write to shared memory
             F[0][j][i] = flux.x;

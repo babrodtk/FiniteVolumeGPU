@@ -149,7 +149,7 @@ class KP07_dimsplit:
             self.t += 2.0*local_dt
             
         
-        return self.t
+        return self.t, 2*n
     
     
     

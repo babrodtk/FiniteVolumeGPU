@@ -126,7 +126,7 @@ class HLL:
             
             self.data.swap()
         
-        return self.t
+        return self.t, n
     
     
     
