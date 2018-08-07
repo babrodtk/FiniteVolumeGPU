@@ -753,6 +753,10 @@ __device__ float minmod(float r_) {
     return fmaxf(0.0f, fminf(1.0f, r_));
 }
 
+__device__ float generalized_minmod(float r_, float theta_) {
+    return fmaxf(0.0f, fminf(theta_*r_, fminf( (1.0f + r_) / 2.0f, theta_)));
+}
+
 __device__ float superbee(float r_) {
     return fmaxf(0.0f, fmaxf(fminf(2.0f*r_, 1.0f), fminf(r_, 2.0f)));
 }
@@ -776,6 +780,7 @@ __device__ float desingularize(float x_, float eps_) {
 // Compute h in the "star region", h^dagger
 __device__ float computeHStar(float h_l, float h_r, float u_l, float u_r, float c_l, float c_r, float g_) {
     //return 0.5f * (h_l+h_r) - 0.25f * (u_r-u_l)*(h_l+h_r)/(c_l+c_r);
+    
     const float h_tmp = 0.5f * (c_l + c_r) + 0.25f * (u_l - u_r);
     return h_tmp*h_tmp / g_;
 }
@@ -827,7 +832,7 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     const float q_r = (h_dag > h_r) ? q_r_tmp : 1.0f;
     
     // Compute wave speed estimates
-    const float S_l = u_l - c_l*q_l; //FIXME: Correct wave speed estimate?
+    const float S_l = u_l - c_l*q_l; 
     const float S_r = u_r + c_r*q_r;
     const float S_star = ( S_l*h_r*(u_r - S_r) - S_r*h_l*(u_l - S_l) ) / ( h_r*(u_r - S_r) - h_l*(u_l - S_l) );
     
@@ -847,14 +852,6 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     const float c_1 = S_l * dt_ / dx_;
     const float c_2 = S_star * dt_ / dx_;
     const float c_3 = S_r * dt_ / dx_;
-    
-    /* HLL flluxes
-    const float3 F_1 = F_func(Q_l1, g_);
-    const float3 F_3 = F_func(Q_r1, g_);
-    const float3 F_2 = (S_r*F_1 - S_l*F_3 + S_r*S_l*(Q_r1 - Q_l1)) / (S_r-S_l);
-    const float c_1 = S_l * dt_ / dx_;
-    const float c_2 = S_r * dt_ / dx_;
-    */
     
     // Compute the "upwind change" vectors for the i-3/2 and i+3/2 interfaces
     const float eps = 1.0e-6f;
@@ -887,9 +884,9 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     
     // Compute the limiter
     // We use h for the nonlinear waves, and v for the middle shear wave 
-    const float A_1 = copysign(1.0f, c_1) * WAF_minmod(r_1, c_1);
-    const float A_2 = copysign(1.0f, c_2) * WAF_minmod(r_2, c_2); //Middle shear wave 
-    const float A_3 = copysign(1.0f, c_3) * WAF_minmod(r_3, c_3);
+    const float A_1 = copysign(1.0f, c_1) * limiterToWAFLimiter(generalized_minmod(r_1, 1.9f), c_1);
+    const float A_2 = copysign(1.0f, c_2) * limiterToWAFLimiter(generalized_minmod(r_2, 1.9f), c_2); //Middle shear wave 
+    const float A_3 = copysign(1.0f, c_3) * limiterToWAFLimiter(generalized_minmod(r_3, 1.9f), c_3);
     
     //Average the fluxes
     const float3 flux = 0.5f*( F_1 + F_4 )
