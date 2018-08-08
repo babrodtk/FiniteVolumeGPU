@@ -148,7 +148,7 @@ class CUDAArray2D:
         #Make sure data is in proper format
         assert np.issubdtype(data.dtype, np.float32), "Wrong datatype: %s" % str(data.dtype)
         assert not np.isfortran(data), "Wrong datatype (Fortran, expected C)"
-        assert data.shape == (self.ny_halo, self.nx_halo), "Wrong data shape: %s" % str(data.shape)
+        assert data.shape == (self.ny_halo, self.nx_halo), "Wrong data shape: %s vs %s" % (str(data.shape), str((self.ny_halo, self.nx_halo)))
 
         #Upload data to the device
         self.data = pycuda.gpuarray.to_gpu_async(data, stream=stream)

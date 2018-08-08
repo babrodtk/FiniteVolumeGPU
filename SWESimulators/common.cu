@@ -22,6 +22,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+
 /**
   * Location of thread in block
   */
@@ -702,7 +703,7 @@ __device__ float WAF_superbee(float r_, float c_) {
     }
     // 0.0 <= r <= 1/2
     else if (r_ <= 0.5f) { 
-        return 1.0f - 2.0f*(1.0f - fabs(c_))*r_;
+        return 1.0f - 2.0f*(1.0f - fabsf(c_))*r_;
     }
     // 1/2 <= r <= 1
     else if (r_ <= 1.0f) {
@@ -710,11 +711,11 @@ __device__ float WAF_superbee(float r_, float c_) {
     }
     // 1 <= r <= 2
     else  if (r_ <= 2.0f) {
-        return 1.0f - (1.0f - fabs(c_))*r_;
+        return 1.0f - (1.0f - fabsf(c_))*r_;
     }
     // r >= 2
     else {
-        return 2.0f*fabs(c_) - 1.0f;
+        return 2.0f*fabsf(c_) - 1.0f;
     }
 }
 
@@ -726,20 +727,38 @@ __device__ float WAF_albada(float r_, float c_) {
         return 1.0f;
     }
     else {
-        return 1.0f - (1.0f - fabs(c_)) * r_ * (1.0f + r_) / (1.0f + r_*r_);
+        return 1.0f - (1.0f - fabsf(c_)) * r_ * (1.0f + r_) / (1.0f + r_*r_);
+    }
+}
+
+__device__ float WAF_minbee(float r_, float c_) {
+    r_ = fmaxf(-1.0f, fminf(2.0f, r_));
+    if (r_ <= 0.0f) {
+        return 1.0f;
+    }
+    if (r_ >= 0.0f && r_ <= 1.0f) {
+        return 1.0f - (1.0f - fabsf(c_)) * r_;
+    }
+    else {
+        return fabsf(c_);
     }
 }
 
 __device__ float WAF_minmod(float r_, float c_) {
-    return 1.0f - (1.0f - fabs(c_)) * fmax(0.0f, fmin(1.0f, r_));
+    return 1.0f - (1.0f - fabsf(c_)) * fmaxf(0.0f, fminf(1.0f, r_));
 }
 
+
 __device__ float minmod(float r_) {
-    return fmax(0.0f, fmin(1.0f, r_));
+    return fmaxf(0.0f, fminf(1.0f, r_));
+}
+
+__device__ float generalized_minmod(float r_, float theta_) {
+    return fmaxf(0.0f, fminf(theta_*r_, fminf( (1.0f + r_) / 2.0f, theta_)));
 }
 
 __device__ float superbee(float r_) {
-    return fmax(0.0f, fmax(fmin(2.0f*r_, 1.0f), fmin(r_, 2.0f)));
+    return fmaxf(0.0f, fmaxf(fminf(2.0f*r_, 1.0f), fminf(r_, 2.0f)));
 }
 
 __device__ float vanAlbada1(float r_) {
@@ -747,13 +766,24 @@ __device__ float vanAlbada1(float r_) {
 }
 
 __device__ float vanLeer(float r_) {
-    return (r_ + fabs(r_)) / (1.0f + fabs(r_));
+    return (r_ + fabsf(r_)) / (1.0f + fabsf(r_));
 }
 
 __device__ float limiterToWAFLimiter(float r_, float c_) {
-    return 1.0f - (1.0f - fabs(c_))*r_;
+    return 1.0f - (1.0f - fabsf(c_))*r_;
 }
 
+__device__ float desingularize(float x_, float eps_) {
+    return copysign(1.0f, x_)*fmaxf(fabsf(x_), fminf(x_*x_/(2.0f*eps_)+0.5f*eps_, eps_));
+}
+
+// Compute h in the "star region", h^dagger
+__device__ float computeHStar(float h_l, float h_r, float u_l, float u_r, float c_l, float c_r, float g_) {
+    //return 0.5f * (h_l+h_r) - 0.25f * (u_r-u_l)*(h_l+h_r)/(c_l+c_r);
+    
+    const float h_tmp = 0.5f * (c_l + c_r) + 0.25f * (u_l - u_r);
+    return h_tmp*h_tmp / g_;
+}
 
 /**
   * Weighted average flux (Toro 2001, p 200) for interface {i+1/2}
@@ -774,6 +804,9 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     const float u_l = Q_l1.y / h_l;
     const float u_r = Q_r1.y / h_r;
     
+    const float u_l2 = Q_l2.y / h_l2;
+    const float u_r2 = Q_r2.y / h_r2;
+    
     const float v_l = Q_l1.z / h_l;
     const float v_r = Q_r1.z / h_r;
     
@@ -784,22 +817,27 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     const float c_l = sqrt(g_*h_l);
     const float c_r = sqrt(g_*h_r);
     
-    // Compute h in the "star region", h^dagger
-    const float h_dag = 0.5f * (h_l+h_r) - 0.25f * (u_r-u_l)*(h_l+h_r)/(c_l+c_r);
+    const float c_l2 = sqrt(g_*h_l2);
+    const float c_r2 = sqrt(g_*h_r2);
     
-    const float q_l_tmp = sqrt(0.5f * ( (h_dag+h_l)*h_dag / (h_l*h_l) ) );
-    const float q_r_tmp = sqrt(0.5f * ( (h_dag+h_r)*h_dag / (h_r*h_r) ) );
+    // Compute h in the "star region", h^dagger
+    const float h_dag_l = computeHStar(h_l2,  h_l, u_l2,  u_l, c_l2,  c_l, g_);
+    const float h_dag   = computeHStar( h_l,  h_r,  u_l,  u_r,  c_l,  c_r, g_);
+    const float h_dag_r = computeHStar( h_r, h_r2,  u_r, u_r2,  c_r, c_r2, g_);
+    
+    const float q_l_tmp = sqrt(0.5f * ( (h_dag+h_l)*h_dag ) ) / h_l;
+    const float q_r_tmp = sqrt(0.5f * ( (h_dag+h_r)*h_dag ) ) / h_r;
     
     const float q_l = (h_dag > h_l) ? q_l_tmp : 1.0f;
     const float q_r = (h_dag > h_r) ? q_r_tmp : 1.0f;
     
     // Compute wave speed estimates
-    const float S_l = u_l - c_l*q_l; //FIXME: Right wave speed estimate?
+    const float S_l = u_l - c_l*q_l; 
     const float S_r = u_r + c_r*q_r;
     const float S_star = ( S_l*h_r*(u_r - S_r) - S_r*h_l*(u_l - S_l) ) / ( h_r*(u_r - S_r) - h_l*(u_l - S_l) );
     
-    const float3 Q_star_l = h_l * (S_l - u_l) / (S_l - S_star) * make_float3(1, S_star, v_l);
-    const float3 Q_star_r = h_r * (S_r - u_r) / (S_r - S_star) * make_float3(1, S_star, v_r);
+    const float3 Q_star_l = h_l * (S_l - u_l) / (S_l - S_star) * make_float3(1.0, S_star, v_l);
+    const float3 Q_star_r = h_r * (S_r - u_r) / (S_r - S_star) * make_float3(1.0, S_star, v_r);
     
     // Estimate the fluxes in the four regions
     const float3 F_1 = F_func(Q_l1, g_);
@@ -816,73 +854,46 @@ __device__ float3 WAF_1D_flux(const float3 Q_l2, const float3 Q_l1, const float3
     const float c_3 = S_r * dt_ / dx_;
     
     // Compute the "upwind change" vectors for the i-3/2 and i+3/2 interfaces
-    const float rh_m = (h_l - h_l2) / (h_r - h_l);
-    const float rh_p = (h_r2 - h_r) / (h_r - h_l);
+    const float eps = 1.0e-6f;
+    const float r_1 = desingularize( (c_1 > 0.0f) ? (h_dag_l - h_l2) : (h_dag_r - h_r), eps) / desingularize((h_dag - h_l), eps);
+    const float r_2 = desingularize( (c_2 > 0.0f) ? (v_l - v_l2) : (v_r2 - v_r), eps ) / desingularize((v_r - v_l), eps);
+    const float r_3 = desingularize( (c_3 > 0.0f) ? (h_l - h_dag_l) : (h_r2 - h_dag_r), eps ) / desingularize((h_r - h_dag), eps);
     
-    const float rv_m = (v_l - v_l2) / (v_r - v_l);
-    const float rv_p = (v_r2 - v_r) / (v_r - v_l);
+    /*
+    const float eps1 = 1.0e-6f;
+    const float eps2 = eps1;//*1.0e-1f;
+    const float rh_m = desingularize((h_l - h_l2), eps1) / desingularize((h_r - h_l), eps2);
+    const float rh_p = desingularize((h_r2 - h_r), eps1) / desingularize((h_r - h_l), eps2);
+    const float rv_m = desingularize((v_l - v_l2), eps1) / desingularize((v_r - v_l), eps2);
+    const float rv_p = desingularize((v_r2 - v_r), eps1) / desingularize((v_r - v_l), eps2);
     
     // Compute the r parameters for the flux limiter
     const float rh_1 = (c_1 > 0.0f) ? rh_m : rh_p; 
-    //const float rv_1 = (c_1 > 0.0f) ? rv_m : rv_p; 
+    const float rv_1 = (c_1 > 0.0f) ? rv_m : rv_p; 
     
-    //const float rh_2 = (c_2 > 0.0f) ? rh_m : rh_p; 
-    const float rv_2 = (c_2 > 0.0f) ? rv_m : rv_p; 
+    const float rh_2 = (c_2 > 0.0f) ? rh_m : rh_p; 
+    const float rv_2 = (c_2 > 0.0f) ? rv_m : rv_p;
     
     const float rh_3 = (c_3 > 0.0f) ? rh_m : rh_p;
-    //const float rv_3 = (c_3 > 0.0f) ? rv_m : rv_p;
+    const float rv_3 = (c_3 > 0.0f) ? rv_m : rv_p;
+    
+    const float r_1 = rh_1;
+    const float r_2 = rv_2;
+    const float r_3 = rh_3;
+    */
     
     // Compute the limiter
     // We use h for the nonlinear waves, and v for the middle shear wave 
-    ///**
-    const float A_1 = copysign(1.0f, c_1) * WAF_minmod(rh_1, c_1);
-    const float A_2 = copysign(1.0f, c_2) * WAF_minmod(rv_2, c_2); //Middle shear wave 
-    const float A_3 = copysign(1.0f, c_3) * WAF_minmod(rh_3, c_3); 
-    //*/
-    /**
-    //2nd order for smooth cases (unstable for shocks)
-    const float A_1 = c_1;
-    const float A_2 = c_2;
-    const float A_3 = c_3;
-    */
-    /*
-    const float A_1 = sign(c_1) * limiterToWAFLimiter(minmod(rh_1), c_1);
-    const float A_2 = sign(c_2) * limiterToWAFLimiter(minmod(rv_2), c_2);
-    const float A_3 = sign(c_3) * limiterToWAFLimiter(minmod(rh_3), c_3);
-    */
-        
+    const float A_1 = copysign(1.0f, c_1) * limiterToWAFLimiter(generalized_minmod(r_1, 1.9f), c_1);
+    const float A_2 = copysign(1.0f, c_2) * limiterToWAFLimiter(generalized_minmod(r_2, 1.9f), c_2); //Middle shear wave 
+    const float A_3 = copysign(1.0f, c_3) * limiterToWAFLimiter(generalized_minmod(r_3, 1.9f), c_3);
+    
     //Average the fluxes
     const float3 flux = 0.5f*( F_1 + F_4 )
                       - 0.5f*( A_1 * (F_2 - F_1)
                              + A_2 * (F_3 - F_2)
                              + A_3 * (F_4 - F_3) );
 
-    /*
-    const float d_0 = -1.0f;
-    const float d_1 = -0.5f;//max(min(sign(c_1)*WAF_minbee(rh_1, c_1), 1.0f), -1.0f);
-    const float d_2 = 0.0f;//max(min(sign(c_2)*WAF_minbee(rh_2, c_2), 1.0f), -1.0f);
-    const float d_3 = 0.5f;//max(min(sign(c_3)*WAF_minbee(rh_3, c_3), 1.0f), -1.0f);
-    const float d_4 = 1.0f;
-    const float3 flux = 0.5f*(d_1 - d_0) * F_1
-                        + 0.5f*(d_2 - d_1) * F_2
-                        + 0.5f*(d_3 - d_2) * F_3
-                        + 0.5f*(d_4 - d_3) * F_4;
-    */
-    /*
-    const float3 F_hllc = (S_r*F_1 - S_l*F_4 + S_r*S_l*(Q_r1 - Q_l1)) / (S_r-S_l);
-    const float3 flux = 0.5f*(d_1 - d_0) * F_1
-                        + 0.5f*(d_3 - d_1) * F_hllc
-                        + 0.5f*(d_4 - d_3) * F_4;
-      */
-                             /*
-    const float c_0 = -1.0f;
-    const float c_4 = 1.0f;
-    const float3 flux = 0.5f*(c_1 - c_0) * F_1
-                        + 0.5f*(c_2 - c_1) * F_2
-                        + 0.5f*(c_3 - c_2) * F_3
-                        + 0.5f*(c_4 - c_3) * F_4;
-                        */
-    //const float3 flux = 0.5f*( F_1 + F_4 ) - 0.5f*( sign(c_3) * A_3 * (F_4 - F_3) );
     return flux;
 }
 

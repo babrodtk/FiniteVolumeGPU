@@ -127,7 +127,7 @@ class LxF:
             
             self.data.swap()
         
-        return self.t
+        return self.t, n
         
         
     

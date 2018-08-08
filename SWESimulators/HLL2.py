@@ -150,7 +150,7 @@ class HLL2:
             self.t += local_dt
             
         
-        return self.t
+        return self.t, 2*n
     
     
     
