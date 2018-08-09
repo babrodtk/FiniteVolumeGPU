@@ -72,9 +72,9 @@ class KP07 (Simulator.BaseSimulator):
         self.r = np.float32(r)
 
         #Get kernels
-        self.module = context.get_kernel("KP07_kernel.cu", block_width, block_height)
-        self.kernel = self.module.get_function("KP07Kernel")
-        self.kernel.prepare("iiffffffiPiPiPiPiPiPi")
+        self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
+                                        "iiffffffiPiPiPiPiPiPi", \
+                                        block_width, block_height)
         
     def __str__(self):
         return "Kurganov-Petrova 2007"

@@ -70,9 +70,9 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         self.theta = np.float32(theta)
 
         #Get kernels
-        self.module = context.get_kernel("KP07_dimsplit_kernel.cu", block_width, block_height)
-        self.kernel = self.module.get_function("KP07DimsplitKernel")
-        self.kernel.prepare("iifffffiPiPiPiPiPiPi")    
+        self.kernel = context.get_prepared_kernel("KP07_dimsplit_kernel.cu", "KP07DimsplitKernel", \
+                                            "iifffffiPiPiPiPiPiPi", \
+                                            block_width, block_height)
     
     def __str__(self):
         return "Kurganov-Petrova 2007 dimensionally split"

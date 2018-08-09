@@ -64,9 +64,9 @@ class LxF (Simulator.BaseSimulator):
             block_width, block_height);
 
         # Get kernels
-        self.module = context.get_kernel("LxF_kernel.cu", block_width, block_height)
-        self.kernel = self.module.get_function("LxFKernel")
-        self.kernel.prepare("iiffffPiPiPiPiPiPi")
+        self.kernel = context.get_prepared_kernel("LxF_kernel.cu", "LxFKernel", \
+                                        "iiffffPiPiPiPiPiPi", \
+                                        block_width, block_height)
         
     def __str__(self):
         return "Lax Friedrichs"

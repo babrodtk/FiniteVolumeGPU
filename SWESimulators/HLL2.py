@@ -69,9 +69,9 @@ class HLL2 (Simulator.BaseSimulator):
         self.theta = np.float32(theta)
 
         #Get kernels
-        self.module = context.get_kernel("HLL2_kernel.cu", block_width, block_height)
-        self.kernel = self.module.get_function("HLL2Kernel")
-        self.kernel.prepare("iifffffiPiPiPiPiPiPi")
+        self.kernel = context.get_prepared_kernel("HLL2_kernel.cu", "HLL2Kernel", \
+                                        "iifffffiPiPiPiPiPiPi", \
+                                        block_width, block_height)
         
     def __str__(self):
         return "Harten-Lax-van Leer (2nd order)"

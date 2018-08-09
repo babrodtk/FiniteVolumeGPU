@@ -63,9 +63,9 @@ class WAF (Simulator.BaseSimulator):
             block_width, block_height);
 
         #Get kernels
-        self.module = context.get_kernel("WAF_kernel.cu", block_width, block_height)
-        self.kernel = self.module.get_function("WAFKernel")
-        self.kernel.prepare("iiffffiPiPiPiPiPiPi")
+        self.kernel = context.get_prepared_kernel("WAF_kernel.cu", "WAFKernel", \
+                                        "iiffffiPiPiPiPiPiPi", \
+                                        block_width, block_height)
     
     def __str__(self):
         return "Weighted average flux"
