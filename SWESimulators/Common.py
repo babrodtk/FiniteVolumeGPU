@@ -8,6 +8,31 @@ import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
 import pycuda.driver as cuda
 
+
+
+"""
+Class which keeps track of time spent for a section of code
+"""
+class Timer(object):
+    def __init__(self, tag, verbose=True):
+        self.verbose = verbose
+        self.tag = tag
+        
+    def __enter__(self):
+        self.start = time.time()
+        return self
+    
+    def __exit__(self, *args):
+        self.end = time.time()
+        self.secs = self.end - self.start
+        self.msecs = self.secs * 1000 # millisecs
+        if self.verbose:
+            print("=> " + self.tag + ' %f ms' % self.msecs)
+            
+            
+            
+            
+
 """
 Class which keeps track of the CUDA context and some helper functions
 """
@@ -74,33 +99,76 @@ class CudaContext(object):
     """
     Reads a text file and creates an OpenCL kernel from that
     """
-    def get_kernel(self, kernel_filename, block_width, block_height):
+    def get_kernel(self, kernel_filename, block_width, block_height, include_dirs=[], verbose=False):
+        if (verbose):
+            print("Compiling " + kernel_filename)
+        
         # Generate a kernel ID for our cache
         module_path = os.path.dirname(os.path.realpath(__file__))
         
-        kernel_hash = ""
+        num_includes = 0
+        max_includes = 100
+        include_dirs = include_dirs + [module_path]
+        kernel_hash = kernel_filename + "_" + str(block_width) + "x" + str(block_height)
         
-        # Loop over file and includes, and check if something has changed
-        files = [kernel_filename]
-        while len(files):
-            filename = os.path.join(module_path, files.pop())
-            modified = os.path.getmtime(filename)
-            with open(filename, "r") as file:
-                file_str = file.read()
-                file_hash = filename + "_" + str(hash(file_str)) + ":" + str(modified) + "--"
-                includes = re.findall('^\W*#include\W+(.+?)\W*$', file_str, re.M)
-                files = files + includes #WARNING FIXME This will not work with circular includes
+        with Timer("compiler", verbose=False) as timer:
+            # Loop over file and includes, and check if something has changed
+            files = [os.path.join(module_path, kernel_filename)]
+            while len(files):
+            
+                if (num_includes > max_includes):
+                    raise("Maximum number of includes reached - circular include in {:}?".format(kernel_filename))
+            
+                filename = files.pop()
                 
-            kernel_hash = kernel_hash + file_hash
-    
+                if (verbose):
+                    print("`-> Hashing " + filename)
+                    
+                modified = os.path.getmtime(filename)
+                    
+                # Open the file
+                with open(filename, "r") as file:
+                
+                    # Search for #inclue <something> and also hash the file
+                    file_str = file.read()
+                    file_hash = "\nfile=" + filename + ":hash=" + str(hash(file_str)) + ":modified=" + str(modified)
+                    includes = re.findall('^\W*#include\W+(.+?)\W*$', file_str, re.M)
+                    
+                # Loop over everything that looks like an include
+                for include_file in includes:
+                    
+                    #Search through include directories for the file
+                    file_path = os.path.dirname(filename)
+                    for include_path in [file_path] + include_dirs:
+                    
+                        # If we find it, add it to list of files to check
+                        temp_path = os.path.join(include_path, include_file)
+                        if (os.path.isfile(temp_path)):
+                            files = files + [temp_path]
+                            num_includes = num_includes + 1 #For circular includes...
+                            break
+                
+                #Create the "advanced" hash for each kernel
+                kernel_hash = kernel_hash + file_hash
+        if (verbose):
+            print("`-> Hashed in " + str(timer.secs) + " seconds")
+        
         # Recompile kernel if file or includes have changed
         if (kernel_hash not in self.kernels.keys()):
+            if (verbose):
+                print("`-> Kernel not in hash => compiling " + kernel_filename)
+                
             #Create define string
             define_string = "#define block_width " + str(block_width) + "\n"
             define_string += "#define block_height " + str(block_height) + "\n\n"
             
             kernel_string = define_string + '#include "' + os.path.join(module_path, kernel_filename) + '"'
-            self.kernels[kernel_hash] = cuda_compiler.SourceModule(kernel_string, include_dirs=[module_path])
+            
+            with Timer("compiler", verbose=False) as timer:
+                self.kernels[kernel_hash] = cuda_compiler.SourceModule(kernel_string, include_dirs=include_dirs)
+            if (verbose):
+                print("`-> Compiled in " + str(timer.secs) + " seconds")
+            
             
         return self.kernels[kernel_hash]
     
@@ -113,21 +181,6 @@ class CudaContext(object):
         
         
         
-class Timer(object):
-    def __init__(self, tag, verbose=True):
-        self.verbose = verbose
-        self.tag = tag
-        
-    def __enter__(self):
-        self.start = time.time()
-        return self
-    
-    def __exit__(self, *args):
-        self.end = time.time()
-        self.secs = self.end - self.start
-        self.msecs = self.secs * 1000 # millisecs
-        if self.verbose:
-            print("=> " + self.tag + ' %f ms' % self.msecs)
         
         
 

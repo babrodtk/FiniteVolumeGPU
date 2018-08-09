@@ -25,6 +25,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "limiters.cu"
+#include "fluxes/CentralUpwind.cu"
 
 
 __device__

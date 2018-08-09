@@ -1,5 +1,5 @@
 /*
-This OpenCL kernel implements the HLL flux
+This GPU kernel implements the HLL flux
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "fluxes/HartenLaxVanLeer.cu"
 
 
 
