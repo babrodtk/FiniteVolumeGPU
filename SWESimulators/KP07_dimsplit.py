@@ -26,12 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 import numpy as np
-
-import pycuda.compiler as cuda_compiler
-import pycuda.gpuarray
-import pycuda.driver as cuda
-
-from SWESimulators import Common
+from SWESimulators import Simulator
 
 
 
@@ -40,7 +35,7 @@ from SWESimulators import Common
 """
 Class that solves the SW equations using the dimentionally split KP07 scheme
 """
-class KP07_dimsplit:
+class KP07_dimsplit (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -62,98 +57,62 @@ class KP07_dimsplit:
                  g, \
                  theta=1.3, \
                  block_width=16, block_height=16):
-        #Create a CUDA stream
-        self.stream = cuda.Stream()
+                 
+        # Call super constructor
+        super().__init__(context, \
+            h0, hu0, hv0, \
+            nx, ny, \
+            2, 2, \
+            dx, dy, dt, \
+            g, \
+            block_width, block_height);
+            
+        self.theta = np.float32(theta)
 
         #Get kernels
-        self.kp07_dimsplit_module = context.get_kernel("KP07_dimsplit_kernel.cu", block_width, block_height)
-        self.kp07_dimsplit_kernel = self.kp07_dimsplit_module.get_function("KP07DimsplitKernel")
-        self.kp07_dimsplit_kernel.prepare("iifffffiPiPiPiPiPiPi")
-        
-        #Create data by uploading to device
-        ghost_cells_x = 2
-        ghost_cells_y = 2
-        self.data = Common.SWEDataArakawaA(self.stream, nx, ny, ghost_cells_x, ghost_cells_y, h0, hu0, hv0)
-        
-        #Save input parameters
-        #Notice that we need to specify them in the correct dataformat for the
-        #OpenCL kernel
-        self.nx = np.int32(nx)
-        self.ny = np.int32(ny)
-        self.dx = np.float32(dx)
-        self.dy = np.float32(dy)
-        self.dt = np.float32(dt)
-        self.g = np.float32(g)
-        self.theta = np.float32(theta)
-        
-        #Initialize time
-        self.t = np.float32(0.0)
-        
-        #Compute kernel launch parameters
-        self.local_size = (block_width, block_height, 1) 
-        self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0]))), \
-                       int(np.ceil(self.ny / float(self.local_size[1]))) \
-                      ) 
-    
+        self.module = context.get_kernel("KP07_dimsplit_kernel.cu", block_width, block_height)
+        self.kernel = self.module.get_function("KP07DimsplitKernel")
+        self.kernel.prepare("iifffffiPiPiPiPiPiPi")    
     
     def __str__(self):
         return "Kurganov-Petrova 2007 dimensionally split"
     
+    def simulate(self, t_end):
+        return super().simulateDimsplit(t_end)
     
-    """
-    Function which steps n timesteps
-    """
-    def step(self, t_end=0.0):
-        n = int(t_end / (2.0*self.dt) + 1)
+    def stepEuler(self, dt):
+        return self.stepDimsplitXY(dt)
+    
+    def stepDimsplitXY(self, dt):
+        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+                self.nx, self.ny, \
+                self.dx, self.dy, dt, \
+                self.g, \
+                self.theta, \
+                np.int32(0), \
+                self.data.h0.data.gpudata,  self.data.h0.pitch, \
+                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
+                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
+                self.data.h1.data.gpudata,  self.data.h1.pitch, \
+                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
+                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+        self.data.swap()
+        self.t += dt
+    
+    def stepDimsplitYX(self, dt):
+        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+                self.nx, self.ny, \
+                self.dx, self.dy, dt, \
+                self.g, \
+                self.theta, \
+                np.int32(1), \
+                self.data.h0.data.gpudata,  self.data.h0.pitch, \
+                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
+                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
+                self.data.h1.data.gpudata,  self.data.h1.pitch, \
+                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
+                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+        self.data.swap()
+        self.t += dt
         
-        for i in range(0, n): 
-            #Dimensional splitting: second order accurate for every other timestep,
-            #thus run two timesteps in a go
-            
-            #Compute timestep
-            local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
-            if (local_dt <= 0.0):
-                break
-                
-            #Along X, then Y
-            self.kp07_dimsplit_kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
-                    self.nx, self.ny, \
-                    self.dx, self.dy, local_dt, \
-                    self.g, \
-                    self.theta, \
-                    np.int32(0), \
-                    self.data.h0.data.gpudata,  self.data.h0.pitch, \
-                    self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                    self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                    self.data.h1.data.gpudata,  self.data.h1.pitch, \
-                    self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                    self.data.hv1.data.gpudata, self.data.hv1.pitch)
-            self.data.swap()
-            
-            #Along Y, then X
-            self.kp07_dimsplit_kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
-                    self.nx, self.ny, \
-                    self.dx, self.dy, local_dt, \
-                    self.g, \
-                    self.theta, \
-                    np.int32(1), \
-                    self.data.h0.data.gpudata,  self.data.h0.pitch, \
-                    self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                    self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                    self.data.h1.data.gpudata,  self.data.h1.pitch, \
-                    self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                    self.data.hv1.data.gpudata, self.data.hv1.pitch)
-            self.data.swap()
-            
-            self.t += 2.0*local_dt
-            
         
-        return self.t, 2*n
-    
-    
-    
-    
-    def download(self):
-        return self.data.download(self.stream)
-
