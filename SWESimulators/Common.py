@@ -37,6 +37,7 @@ class Timer(object):
 Class which keeps track of the CUDA context and some helper functions
 """
 class CudaContext(object):
+    
     def __init__(self, verbose=True, blocking=False):
         self.verbose = verbose
         self.blocking = blocking
@@ -93,7 +94,10 @@ class CudaContext(object):
         if (self.verbose):
             print(" `-> <" + str(self.cuda_context.handle) + "> Detaching context")
         self.cuda_context.detach()
-                    
+        
+        
+    def __str__(self):
+        return "CudaContext id " + str(self.cuda_context.handle)
     
     def hash_kernel(kernel_filename, include_dirs, verbose=False):        
         # Generate a kernel ID for our cache
@@ -172,8 +176,8 @@ class CudaContext(object):
                 print("`-> Kernel changed or not in hash => compiling " + kernel_filename)
                 
             #Create define string
-            define_string = "#define block_width " + str(block_width) + "\n"
-            define_string += "#define block_height " + str(block_height) + "\n\n"
+            define_string = "#define BLOCK_WIDTH " + str(block_width) + "\n"
+            define_string += "#define BLOCK_HEIGHT " + str(block_height) + "\n\n"
             
             kernel_string = define_string + '#include "' + os.path.join(module_path, kernel_filename) + '"'
             

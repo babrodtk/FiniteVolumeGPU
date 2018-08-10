@@ -94,18 +94,18 @@ inline __device__ __host__ float clamp(const float f, const float a, const float
 __device__ void readBlock1(float* h_ptr_, int h_pitch_,
                 float* hu_ptr_, int hu_pitch_,
                 float* hv_ptr_, int hv_pitch_,
-                float Q[3][block_height+2][block_width+2], 
+                float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2], 
                 const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
     //Index of block within domain
-    const int bx = block_width * get_group_id(0);
-    const int by = block_height * get_group_id(1);
+    const int bx = BLOCK_WIDTH * get_group_id(0);
+    const int by = BLOCK_HEIGHT * get_group_id(1);
     
     //Read into shared memory
-    for (int j=ty; j<block_height+2; j+=block_height) {
+    for (int j=ty; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
         const int l = clamp(by + j, 0, ny_+1); // Out of bounds
         
         //Compute the pointer to current row in the arrays
@@ -113,7 +113,7 @@ __device__ void readBlock1(float* h_ptr_, int h_pitch_,
         float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
         float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
         
-        for (int i=tx; i<block_width+2; i+=block_width) {
+        for (int i=tx; i<BLOCK_WIDTH+2; i+=BLOCK_WIDTH) {
             const int k = clamp(bx + i, 0, nx_+1); // Out of bounds
             
             Q[0][j][i] = h_row[k];
@@ -133,18 +133,18 @@ __device__ void readBlock1(float* h_ptr_, int h_pitch_,
 __device__ void readBlock2(float* h_ptr_, int h_pitch_,
                 float* hu_ptr_, int hu_pitch_,
                 float* hv_ptr_, int hv_pitch_,
-                float Q[3][block_height+4][block_width+4], 
+                float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
                 const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
     //Index of block within domain
-    const int bx = block_width * get_group_id(0);
-    const int by = block_height * get_group_id(1);
+    const int bx = BLOCK_WIDTH * get_group_id(0);
+    const int by = BLOCK_HEIGHT * get_group_id(1);
     
     //Read into shared memory
-    for (int j=ty; j<block_height+4; j+=block_height) {
+    for (int j=ty; j<BLOCK_HEIGHT+4; j+=BLOCK_HEIGHT) {
         const int l = clamp(by + j, 0, ny_+3); // Out of bounds
         
         //Compute the pointer to current row in the arrays
@@ -152,7 +152,7 @@ __device__ void readBlock2(float* h_ptr_, int h_pitch_,
         float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
         float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
         
-        for (int i=tx; i<block_width+4; i+=block_width) {
+        for (int i=tx; i<BLOCK_WIDTH+4; i+=BLOCK_WIDTH) {
             const int k = clamp(bx + i, 0, nx_+3); // Out of bounds
             
             Q[0][j][i] = h_row[k];
@@ -171,7 +171,7 @@ __device__ void readBlock2(float* h_ptr_, int h_pitch_,
 __device__ void writeBlock1(float* h_ptr_, int h_pitch_,
                  float* hu_ptr_, int hu_pitch_,
                  float* hv_ptr_, int hv_pitch_,
-                 float Q[3][block_height+2][block_width+2],
+                 float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                  const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -206,7 +206,7 @@ __device__ void writeBlock1(float* h_ptr_, int h_pitch_,
 __device__ void writeBlock2(float* h_ptr_, int h_pitch_,
                  float* hu_ptr_, int hu_pitch_,
                  float* hv_ptr_, int hv_pitch_,
-                 float Q[3][block_height+4][block_width+4], 
+                 float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
                  const int nx_, const int ny_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -240,7 +240,7 @@ __device__ void writeBlock2(float* h_ptr_, int h_pitch_,
   * No flow boundary conditions for the shallow water equations
   * with one ghost cell in each direction
   */
-__device__ void noFlowBoundary1(float Q[3][block_height+2][block_width+2], const int nx_, const int ny_) {
+__device__ void noFlowBoundary1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2], const int nx_, const int ny_) {
     //Global index
     const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
     const int tj = get_global_id(1) + 1;
@@ -284,7 +284,7 @@ __device__ void noFlowBoundary1(float Q[3][block_height+2][block_width+2], const
   * No flow boundary conditions for the shallow water equations
   * with two ghost cells in each direction
   */
-__device__ void noFlowBoundary2(float Q[3][block_height+4][block_width+4], const int nx_, const int ny_) {
+__device__ void noFlowBoundary2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], const int nx_, const int ny_) {
     //Global index
     const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
     const int tj = get_global_id(1) + 2;
@@ -342,8 +342,8 @@ __device__ void noFlowBoundary2(float Q[3][block_height+4][block_width+4], const
 /**
   * Evolves the solution in time along the x axis (dimensional splitting)
   */
-__device__ void evolveF1(float Q[3][block_height+2][block_width+2],
-              float F[3][block_height+1][block_width+1],
+__device__ void evolveF1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+              float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
               const int nx_, const int ny_,
               const float dx_, const float dt_) {
     //Index of thread within block
@@ -372,8 +372,8 @@ __device__ void evolveF1(float Q[3][block_height+2][block_width+2],
 /**
   * Evolves the solution in time along the x axis (dimensional splitting)
   */
-__device__ void evolveF2(float Q[3][block_height+4][block_width+4],
-              float F[3][block_height+1][block_width+1],
+__device__ void evolveF2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+              float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
               const int nx_, const int ny_,
               const float dx_, const float dt_) {
     //Index of thread within block
@@ -402,8 +402,8 @@ __device__ void evolveF2(float Q[3][block_height+4][block_width+4],
 /**
   * Evolves the solution in time along the y axis (dimensional splitting)
   */
-__device__ void evolveG1(float Q[3][block_height+2][block_width+2],
-              float G[3][block_height+1][block_width+1],
+__device__ void evolveG1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+              float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
               const int nx_, const int ny_,
               const float dy_, const float dt_) {
     //Index of thread within block
@@ -433,8 +433,8 @@ __device__ void evolveG1(float Q[3][block_height+2][block_width+2],
 /**
   * Evolves the solution in time along the y axis (dimensional splitting)
   */
-__device__ void evolveG2(float Q[3][block_height+4][block_width+4],
-              float G[3][block_height+1][block_width+1],
+__device__ void evolveG2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+              float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
               const int nx_, const int ny_,
               const float dy_, const float dt_) {
     //Index of thread within block

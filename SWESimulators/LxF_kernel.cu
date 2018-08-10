@@ -27,8 +27,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
   * Computes the flux along the x axis for all faces
   */
 __device__ 
-void computeFluxF(float Q[3][block_height+2][block_width+2],
-                  float F[3][block_height][block_width+1],
+void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  float F[3][BLOCK_HEIGHT][BLOCK_WIDTH+1],
                   const float g_, const float dx_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -37,7 +37,7 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
     {
         const int j=ty;
         const int l = j + 1; //Skip ghost cells
-        for (int i=tx; i<block_width+1; i+=block_width) {
+        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
             const int k = i;
             
             // Q at interface from the right and left
@@ -62,14 +62,14 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
   * Computes the flux along the y axis for all faces
   */
 __device__ 
-void computeFluxG(float Q[3][block_height+2][block_width+2],
-                  float G[3][block_height+1][block_width],
+void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH],
                   const float g_, const float dy_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height+1; j+=block_height) {
+    for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j;
         {
             const int i=tx;
@@ -114,9 +114,9 @@ __global__ void LxFKernel(
     const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
     const int tj = get_global_id(1) + 1;
     
-    __shared__ float Q[3][block_height+2][block_width+2];
-    __shared__ float F[3][block_height][block_width+1];
-    __shared__ float G[3][block_height+1][block_width];
+    __shared__ float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
+    __shared__ float F[3][BLOCK_HEIGHT][BLOCK_WIDTH+1];
+    __shared__ float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH];
     
     //Read into shared memory
     readBlock1(h0_ptr_, h0_pitch_,
