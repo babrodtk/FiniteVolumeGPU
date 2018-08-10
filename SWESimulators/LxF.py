@@ -66,7 +66,8 @@ class LxF (Simulator.BaseSimulator):
         # Get kernels
         self.kernel = context.get_prepared_kernel("LxF_kernel.cu", "LxFKernel", \
                                         "iiffffPiPiPiPiPiPi", \
-                                        block_width, block_height)
+                                        block_width, block_height, \
+                                        no_extern_c=True)
         
     def __str__(self):
         return "Lax Friedrichs"

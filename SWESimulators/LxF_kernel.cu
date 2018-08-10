@@ -26,9 +26,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /**
   * Computes the flux along the x axis for all faces
   */
+template <int block_width, int block_height>
 __device__ 
-void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float F[3][BLOCK_HEIGHT][BLOCK_WIDTH+1],
+void computeFluxF(float Q[3][block_height+2][block_width+2],
+                  float F[3][block_height][block_width+1],
                   const float g_, const float dx_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -37,7 +38,7 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
     {
         const int j=ty;
         const int l = j + 1; //Skip ghost cells
-        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
+        for (int i=tx; i<block_width+1; i+=block_width) {
             const int k = i;
             
             // Q at interface from the right and left
@@ -60,16 +61,17 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
 
 /**
   * Computes the flux along the y axis for all faces
-  */
-__device__ 
-void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH],
+  */ 
+template <int block_width, int block_height>
+__device__
+void computeFluxG(float Q[3][block_height+2][block_width+2],
+                  float G[3][block_height+1][block_width],
                   const float g_, const float dy_, const float dt_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
+    for (int j=ty; j<block_height+1; j+=block_height) {
         const int l = j;
         {
             const int i=tx;
@@ -95,7 +97,9 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
 }
 
 
-__global__ void LxFKernel(
+template <int block_width, int block_height>
+__device__ 
+void LxFKernelHelper(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_,
@@ -114,9 +118,9 @@ __global__ void LxFKernel(
     const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
     const int tj = get_global_id(1) + 1;
     
-    __shared__ float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
-    __shared__ float F[3][BLOCK_HEIGHT][BLOCK_WIDTH+1];
-    __shared__ float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH];
+    __shared__ float Q[3][block_height+2][block_width+2];
+    __shared__ float F[3][block_height][block_width+1];
+    __shared__ float G[3][block_height+1][block_width];
     
     //Read into shared memory
     readBlock1(h0_ptr_, h0_pitch_,
@@ -131,8 +135,8 @@ __global__ void LxFKernel(
     
     
     //Compute fluxes along the x and y axis
-    computeFluxF(Q, F, g_, dx_, dt_);
-    computeFluxG(Q, G, g_, dy_, dt_);
+    computeFluxF<block_width, block_height>(Q, F, g_, dx_, dt_);
+    computeFluxG<block_width, block_height>(Q, G, g_, dy_, dt_);
     __syncthreads();
     
     
@@ -161,3 +165,33 @@ __global__ void LxFKernel(
         hv_row[ti] = hv1;
     }
 }
+
+extern "C" {
+__global__ 
+void LxFKernel(
+        int nx_, int ny_,
+        float dx_, float dy_, float dt_,
+        float g_,
+        
+        //Input h^n
+        float* h0_ptr_, int h0_pitch_,
+        float* hu0_ptr_, int hu0_pitch_,
+        float* hv0_ptr_, int hv0_pitch_,
+        
+        //Output h^{n+1}
+        float* h1_ptr_, int h1_pitch_,
+        float* hu1_ptr_, int hu1_pitch_,
+        float* hv1_ptr_, int hv1_pitch_) {
+    LxFKernelHelper<BLOCK_WIDTH, BLOCK_HEIGHT>(
+        nx_, ny_,
+        dx_, dy_, dt_,
+        g_,
+        h0_ptr_, h0_pitch_,
+        hu0_ptr_, hu0_pitch_,
+        hv0_ptr_, hv0_pitch_,
+        h1_ptr_, h1_pitch_,
+        hu1_ptr_, hu1_pitch_,
+        hv1_ptr_, hv1_pitch_);
+}
+} // extern "C"
+
