@@ -136,7 +136,7 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
 
 
 
-
+extern "C" {
 __global__ void HLL2Kernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
@@ -229,3 +229,5 @@ __global__ void HLL2Kernel(
                 hv1_ptr_, hv1_pitch_,
                 Q, nx_, ny_);
 }
+
+} // extern "C"

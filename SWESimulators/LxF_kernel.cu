@@ -97,9 +97,9 @@ void computeFluxG(float Q[3][block_height+2][block_width+2],
 }
 
 
-template <int block_width, int block_height>
-__device__ 
-void LxFKernelHelper(
+extern "C" {
+__global__ 
+void LxFKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_,
@@ -113,6 +113,9 @@ void LxFKernelHelper(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
+            
+    const int block_width = BLOCK_WIDTH;
+    const int block_height = BLOCK_HEIGHT;
             
     //Index of cell within domain
     const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
@@ -166,32 +169,5 @@ void LxFKernelHelper(
     }
 }
 
-extern "C" {
-__global__ 
-void LxFKernel(
-        int nx_, int ny_,
-        float dx_, float dy_, float dt_,
-        float g_,
-        
-        //Input h^n
-        float* h0_ptr_, int h0_pitch_,
-        float* hu0_ptr_, int hu0_pitch_,
-        float* hv0_ptr_, int hv0_pitch_,
-        
-        //Output h^{n+1}
-        float* h1_ptr_, int h1_pitch_,
-        float* hu1_ptr_, int hu1_pitch_,
-        float* hv1_ptr_, int hv1_pitch_) {
-    LxFKernelHelper<BLOCK_WIDTH, BLOCK_HEIGHT>(
-        nx_, ny_,
-        dx_, dy_, dt_,
-        g_,
-        h0_ptr_, h0_pitch_,
-        hu0_ptr_, hu0_pitch_,
-        hv0_ptr_, hv0_pitch_,
-        h1_ptr_, h1_pitch_,
-        hu1_ptr_, hu1_pitch_,
-        hv1_ptr_, hv1_pitch_);
-}
 } // extern "C"
 

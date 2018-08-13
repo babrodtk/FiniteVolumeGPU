@@ -182,7 +182,7 @@ class CudaContext(object):
     """
     def get_prepared_kernel(self, kernel_filename, kernel_function_name, \
                     prepared_call_args, \
-                    include_dirs=[], verbose=False, no_extern_c=False, 
+                    include_dirs=[], verbose=False, no_extern_c=True, 
                     **kwargs):
         """
         Helper function to print compilation output

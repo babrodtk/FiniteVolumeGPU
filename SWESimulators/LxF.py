@@ -66,7 +66,6 @@ class LxF (Simulator.BaseSimulator):
         # Get kernels
         self.kernel = context.get_prepared_kernel("LxF_kernel.cu", "LxFKernel", \
                                         "iiffffPiPiPiPiPiPi", \
-                                        no_extern_c=True, \
                                         BLOCK_WIDTH=block_width, \
                                         BLOCK_HEIGHT=block_height)
         

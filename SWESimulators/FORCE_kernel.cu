@@ -98,6 +98,7 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
 }
 
 
+extern "C" {
 __global__ void FORCEKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
@@ -151,3 +152,5 @@ __global__ void FORCEKernel(
                 hv1_ptr_, hv1_pitch_,
                 Q, nx_, ny_);
 }
+
+} // extern "C"

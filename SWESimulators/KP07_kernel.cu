@@ -106,8 +106,6 @@ __global__ void KP07Kernel(
         
         float theta_,
         
-        float r_, //< Bottom friction coefficient
-        
         int step_,
         
         //Input h^n
@@ -180,15 +178,13 @@ __global__ void KP07Kernel(
         float* const h_row  = (float*) ((char*) h1_ptr_ + h1_pitch_*tj);
         float* const hu_row = (float*) ((char*) hu1_ptr_ + hu1_pitch_*tj);
         float* const hv_row = (float*) ((char*) hv1_ptr_ + hv1_pitch_*tj);
-        
-        const float C = 2.0f*r_*dt_/Q[0][j][i];
                     
         if  (step_ == 0) {
             //First step of RK2 ODE integrator
             
             h_row[ti] = h1;
-            hu_row[ti] = hu1 / (1.0f + C);
-            hv_row[ti] = hv1 / (1.0f + C);
+            hu_row[ti] = hu1;
+            hv_row[ti] = hv1;
         }
         else if (step_ == 1) {
             //Second step of RK2 ODE integrator
@@ -205,8 +201,8 @@ __global__ void KP07Kernel(
             
             //Write to main memory
             h_row[ti] = h_b;
-            hu_row[ti] = hu_b / (1.0f + 0.5f*C);
-            hv_row[ti] = hv_b / (1.0f + 0.5f*C);
+            hu_row[ti] = hu_b;
+            hv_row[ti] = hv_b;
         }
     }
 }

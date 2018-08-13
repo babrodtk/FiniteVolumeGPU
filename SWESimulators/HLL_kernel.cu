@@ -104,7 +104,8 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
 
 
 
-
+extern "C" {
+    
 __global__ void HLLKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
@@ -119,9 +120,13 @@ __global__ void HLLKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
+            
+    const int block_width = BLOCK_WIDTH;
+    const int block_height = BLOCK_HEIGHT;
+    
     //Shared memory variables
-    __shared__ float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
-    __shared__ float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
+    __shared__ float Q[3][block_height+2][block_width+2];
+    __shared__ float F[3][block_height+1][block_width+1];
     
     
     //Read into shared memory
@@ -161,3 +166,5 @@ __global__ void HLLKernel(
                 hv1_ptr_, hv1_pitch_,
                 Q, nx_, ny_);
 }
+
+} // extern "C"
