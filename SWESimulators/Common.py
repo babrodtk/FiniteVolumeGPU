@@ -194,8 +194,8 @@ class CudaContext(object):
     """
     def get_prepared_kernel(self, kernel_filename, kernel_function_name, \
                     prepared_call_args, \
-                    block_width, block_height, \
-                    include_dirs=[], verbose=False, no_extern_c=False):
+                    include_dirs=[], verbose=False, no_extern_c=False, 
+                    **kwargs):
         """
         Helper function to print compilation output
         """
@@ -213,11 +213,11 @@ class CudaContext(object):
         # Create a hash of the kernel (and its includes)
         root, ext = os.path.splitext(kernel_filename)
         kernel_hash = root \
-                + "_" + str(block_width) + "x" + str(block_height) \
                 + "_" + CudaContext.hash_kernel( \
                     os.path.join(self.module_path, kernel_filename), \
                     include_dirs=[self.module_path] + include_dirs, \
                     verbose=verbose) \
+                + "_" + str(hash(str(kwargs))) \
                 + ext
         cached_kernel_filename = os.path.join(self.cache_path, kernel_hash)
         
@@ -246,11 +246,15 @@ class CudaContext(object):
             if (verbose):
                 print("`-> Compiling " + kernel_filename)
                 
-            #Create define string
-            define_string = "#define BLOCK_WIDTH " + str(block_width) + "\n"
-            define_string += "#define BLOCK_HEIGHT " + str(block_height) + "\n\n"
-            
-            kernel_string = define_string + '#include "' + os.path.join(self.module_path, kernel_filename) + '"'
+            #Create kernel string
+            kernel_string = ""
+            for key, value in kwargs.items():
+                kernel_string += "#define {:s} {:s}\n".format(str(key), str(value))
+            kernel_string += '#include "' + os.path.join(self.module_path, kernel_filename) + '"'
+            if (self.use_cache):
+                with io.open(cached_kernel_filename + ".txt", "w") as file:
+                    file.write(kernel_string)
+                
             
             with Timer("compiler", verbose=False) as timer:
                 cubin = cuda_compiler.compile(kernel_string, include_dirs=include_dirs, no_extern_c=no_extern_c, cache_dir=False)

@@ -64,8 +64,9 @@ class HLL (Simulator.BaseSimulator):
 
         #Get kernels
         self.kernel = context.get_prepared_kernel("HLL_kernel.cu", "HLLKernel", \
-                                    "iiffffPiPiPiPiPiPi", \
-                                    block_width, block_height)
+                                        "iiffffPiPiPiPiPiPi", \
+                                        BLOCK_WIDTH=block_width, \
+                                        BLOCK_HEIGHT=block_height)
     
     def __str__(self):
         return "Harten-Lax-van Leer"

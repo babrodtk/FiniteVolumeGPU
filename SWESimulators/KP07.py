@@ -74,7 +74,8 @@ class KP07 (Simulator.BaseSimulator):
         #Get kernels
         self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
                                         "iiffffffiPiPiPiPiPiPi", \
-                                        block_width, block_height)
+                                        BLOCK_WIDTH=block_width, \
+                                        BLOCK_HEIGHT=block_height)
         
     def __str__(self):
         return "Kurganov-Petrova 2007"

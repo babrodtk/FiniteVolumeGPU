@@ -71,7 +71,8 @@ class HLL2 (Simulator.BaseSimulator):
         #Get kernels
         self.kernel = context.get_prepared_kernel("HLL2_kernel.cu", "HLL2Kernel", \
                                         "iifffffiPiPiPiPiPiPi", \
-                                        block_width, block_height)
+                                        BLOCK_WIDTH=block_width, \
+                                        BLOCK_HEIGHT=block_height)
         
     def __str__(self):
         return "Harten-Lax-van Leer (2nd order)"

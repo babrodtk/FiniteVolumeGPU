@@ -70,7 +70,8 @@ class FORCE (Simulator.BaseSimulator):
         #Get kernels
         self.kernel = context.get_prepared_kernel("FORCE_kernel.cu", "FORCEKernel", \
                                         "iiffffPiPiPiPiPiPi", \
-                                        block_width, block_height)
+                                        BLOCK_WIDTH=block_width, \
+                                        BLOCK_HEIGHT=block_height)
     
     def __str__(self):
         return "First order centered"
