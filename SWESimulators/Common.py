@@ -1,8 +1,32 @@
+# -*- coding: utf-8 -*-
+
+"""
+This python module implements the different helper functions and 
+classes
+
+Copyright (C) 2018  SINTEF ICT
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
 import os
 
 import numpy as np
 import time
 import re
+import io
+import hashlib
 
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
@@ -38,13 +62,18 @@ Class which keeps track of the CUDA context and some helper functions
 """
 class CudaContext(object):
     
-    def __init__(self, verbose=True, blocking=False):
+    def __init__(self, verbose=True, blocking=False, use_cache=True):
         self.verbose = verbose
         self.blocking = blocking
-        self.kernels = {}
+        self.use_cache = use_cache
+        self.modules = {}
         
+        self.module_path = os.path.dirname(os.path.realpath(__file__))
+        
+        #Initialize cuda (must be first call to PyCUDA)
         cuda.init(flags=0)
         
+        #Print some info about CUDA
         if (self.verbose):
             print("CUDA version " + str(cuda.get_version()))
             print("Driver version " + str(cuda.get_driver_version()))
@@ -55,6 +84,7 @@ class CudaContext(object):
             print(" => compute capability: " + str(self.cuda_device.compute_capability()))
             print(" => memory: " + str(self.cuda_device.total_memory() / (1024*1024)) + " MB")
 
+        # Create the CUDA context
         if (self.blocking):
             self.cuda_context = self.cuda_device.make_context(flags=cuda.ctx_flags.SCHED_BLOCKING_SYNC)
             if (self.verbose):
@@ -66,6 +96,14 @@ class CudaContext(object):
         
         if (self.verbose):
             print("Created context <" + str(self.cuda_context.handle) + ">")
+        
+        #Create cache dir for cubin files
+        if (self.use_cache):
+            self.cache_path = os.path.join(self.module_path, "cuda_cache") 
+            if not os.path.isdir(self.cache_path):
+                os.mkdir(self.cache_path)
+            if (verbose):
+                print("Using CUDA cache dir " + self.cache_path)
             
     
     def __del__(self, *args):
@@ -98,13 +136,13 @@ class CudaContext(object):
         
     def __str__(self):
         return "CudaContext id " + str(self.cuda_context.handle)
+        
     
     def hash_kernel(kernel_filename, include_dirs, verbose=False):        
-        # Generate a kernel ID for our cache
-        
+        # Generate a kernel ID for our caches
         num_includes = 0
         max_includes = 100
-        kernel_hash = ""
+        kernel_hasher = hashlib.md5()
         
         with Timer("compiler", verbose=False) as timer:
             # Loop over file and includes, and check if something has changed
@@ -122,11 +160,14 @@ class CudaContext(object):
                 modified = os.path.getmtime(filename)
                     
                 # Open the file
-                with open(filename, "r") as file:
+                with io.open(filename, "r") as file:
                 
                     # Search for #inclue <something> and also hash the file
                     file_str = file.read()
-                    file_hash = "\nfile=" + filename + ":hash=" + str(hash(file_str)) + ":modified=" + str(modified)
+                    kernel_hasher.update(file_str.encode('utf-8'))
+                    kernel_hasher.update(str(modified).encode('utf-8'))
+                    
+                    #Find all includes
                     includes = re.findall('^\W*#include\W+(.+?)\W*$', file_str, re.M)
                     
                 # Loop over everything that looks like an include
@@ -143,12 +184,10 @@ class CudaContext(object):
                             num_includes = num_includes + 1 #For circular includes...
                             break
                 
-                #Create the "advanced" hash for each kernel
-                kernel_hash = kernel_hash + file_hash
         if (verbose):
             print("`-> Hashed in " + str(timer.secs) + " seconds")
             
-        return kernel_hash
+        return kernel_hasher.hexdigest()
     
     """
     Reads a text file and creates an OpenCL kernel from that
@@ -157,45 +196,82 @@ class CudaContext(object):
                     prepared_call_args, \
                     block_width, block_height, \
                     include_dirs=[], verbose=False, no_extern_c=False):
+        """
+        Helper function to print compilation output
+        """
+        def cuda_compile_message_handler(compile_success_bool, info_str, error_str):
+            if (verbose):
+                print("`-> Compilation returned " + str(compile_success_bool))
+                if info_str:
+                    print("`-> Info: " + info_str) 
+                if error_str:
+                    print("`-> Error: " + error_str) 
         
         if (verbose):
             print("Getting " + kernel_filename)
             
         # Create a hash of the kernel (and its includes)
-        module_path = os.path.dirname(os.path.realpath(__file__))
-        kernel_hash = kernel_filename \
+        root, ext = os.path.splitext(kernel_filename)
+        kernel_hash = root \
                 + "_" + str(block_width) + "x" + str(block_height) \
-                + CudaContext.hash_kernel( \
-                    os.path.join(module_path, kernel_filename), \
-                    include_dirs=[module_path] + include_dirs, \
-                    verbose=verbose)
+                + "_" + CudaContext.hash_kernel( \
+                    os.path.join(self.module_path, kernel_filename), \
+                    include_dirs=[self.module_path] + include_dirs, \
+                    verbose=verbose) \
+                + ext
+        cached_kernel_filename = os.path.join(self.cache_path, kernel_hash)
         
-        # Recompile kernel if file or includes have changed
-        if (kernel_hash not in self.kernels.keys()):
+        # If we have the kernel in our hashmap, return it
+        if (kernel_hash in self.modules.keys()):
             if (verbose):
-                print("`-> Kernel changed or not in hash => compiling " + kernel_filename)
+                print("`-> Found kernel " + kernel_hash + " cached in hashmap")
+            return self.modules[kernel_hash].get_function(kernel_function_name)
+        
+        # If we have it on disk, return it
+        elif (self.use_cache and os.path.isfile(cached_kernel_filename)):
+            if (verbose):
+                print("`-> Found kernel " + kernel_hash + " cached on disk")
+                
+            with io.open(cached_kernel_filename, "rb") as file:
+                file_str = file.read()
+                module = cuda.module_from_buffer(file_str, message_handler=cuda_compile_message_handler)
+                
+            self.modules[kernel_hash] = module
+            kernel = self.modules[kernel_hash].get_function(kernel_function_name)
+            kernel.prepare(prepared_call_args)
+            return kernel
+            
+        # Otherwise, compile it from source
+        else:
+            if (verbose):
+                print("`-> Compiling " + kernel_filename)
                 
             #Create define string
             define_string = "#define BLOCK_WIDTH " + str(block_width) + "\n"
             define_string += "#define BLOCK_HEIGHT " + str(block_height) + "\n\n"
             
-            kernel_string = define_string + '#include "' + os.path.join(module_path, kernel_filename) + '"'
+            kernel_string = define_string + '#include "' + os.path.join(self.module_path, kernel_filename) + '"'
             
             with Timer("compiler", verbose=False) as timer:
-                self.kernels[kernel_hash] = cuda_compiler.SourceModule(kernel_string, include_dirs=include_dirs, no_extern_c=no_extern_c)
+                cubin = cuda_compiler.compile(kernel_string, include_dirs=include_dirs, no_extern_c=no_extern_c, cache_dir=False)
+                module = cuda.module_from_buffer(cubin, message_handler=cuda_compile_message_handler)
+                self.modules[kernel_hash] = module
+                if (self.use_cache):
+                    with io.open(cached_kernel_filename, "wb") as file:
+                        file.write(cubin)
+                
             if (verbose):
                 print("`-> Compiled in " + str(timer.secs) + " seconds")
             
-        
-        kernel = self.kernels[kernel_hash].get_function(kernel_function_name)
-        kernel.prepare(prepared_call_args)
-        return kernel
+            kernel = self.modules[kernel_hash].get_function(kernel_function_name)
+            kernel.prepare(prepared_call_args)
+            return kernel
     
     """
     Clears the kernel cache (useful for debugging & development)
     """
     def clear_kernel_cache(self):
-        self.kernels = {}
+        self.modules = {}
         
         
         
