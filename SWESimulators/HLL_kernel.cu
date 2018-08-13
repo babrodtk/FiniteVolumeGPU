@@ -1,5 +1,5 @@
 /*
-This OpenCL kernel implements the HLL flux
+This GPU kernel implements the HLL flux
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "fluxes/HartenLaxVanLeer.cu"
 
 
 
@@ -29,8 +30,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
   * Computes the flux along the x axis for all faces
   */
 __device__
-void computeFluxF(float Q[3][block_height+2][block_width+2],
-                  float F[3][block_height+1][block_width+1],
+void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -39,7 +40,7 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
     {
         const int j=ty;
         const int l = j + 1; //Skip ghost cells     
-        for (int i=tx; i<block_width+1; i+=block_width) { 
+        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) { 
             const int k = i;
             
             const float3 Q_l  = make_float3(Q[0][l][k  ], Q[1][l][k  ], Q[2][l][k  ]);
@@ -63,14 +64,14 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
   * Computes the flux along the y axis for all faces
   */
 __device__
-void computeFluxG(float Q[3][block_height+2][block_width+2],
-                  float G[3][block_height+1][block_width+1],
+void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height+1; j+=block_height) {
+    for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j;
         {
             const int i=tx;
@@ -103,7 +104,8 @@ void computeFluxG(float Q[3][block_height+2][block_width+2],
 
 
 
-
+extern "C" {
+    
 __global__ void HLLKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
@@ -118,6 +120,10 @@ __global__ void HLLKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
+            
+    const int block_width = BLOCK_WIDTH;
+    const int block_height = BLOCK_HEIGHT;
+    
     //Shared memory variables
     __shared__ float Q[3][block_height+2][block_width+2];
     __shared__ float F[3][block_height+1][block_width+1];
@@ -160,3 +166,5 @@ __global__ void HLLKernel(
                 hv1_ptr_, hv1_pitch_,
                 Q, nx_, ny_);
 }
+
+} // extern "C"

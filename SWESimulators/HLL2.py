@@ -21,12 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 import numpy as np
-
-import pycuda.compiler as cuda_compiler
-import pycuda.gpuarray
-import pycuda.driver as cuda
-
-from SWESimulators import Common
+from SWESimulators import Simulator
 
 
         
@@ -39,7 +34,7 @@ from SWESimulators import Common
 """
 Class that solves the SW equations using the Forward-Backward linear scheme
 """
-class HLL2:
+class HLL2 (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -61,99 +56,62 @@ class HLL2:
                  g, \
                  theta=1.8, \
                  block_width=16, block_height=16):
-        #Create a CUDA stream
-        self.stream = cuda.Stream()
+                 
+        # Call super constructor
+        super().__init__(context, \
+            h0, hu0, hv0, \
+            nx, ny, \
+            2, 2, \
+            dx, dy, dt, \
+            g, \
+            block_width, block_height);
+            
+        self.theta = np.float32(theta)
 
         #Get kernels
-        self.hll2_module = context.get_kernel("HLL2_kernel.cu", block_width, block_height)
-        self.hll2_kernel = self.hll2_module.get_function("HLL2Kernel")
-        self.hll2_kernel.prepare("iifffffiPiPiPiPiPiPi")
+        self.kernel = context.get_prepared_kernel("HLL2_kernel.cu", "HLL2Kernel", \
+                                        "iifffffiPiPiPiPiPiPi", \
+                                        BLOCK_WIDTH=block_width, \
+                                        BLOCK_HEIGHT=block_height)
         
-        #Create data by uploading to device
-        ghost_cells_x = 2
-        ghost_cells_y = 2
-        self.data = Common.SWEDataArakawaA(self.stream, \
-                            nx, ny, \
-                            ghost_cells_x, ghost_cells_y, \
-                            h0, hu0, hv0)
-        
-        #Save input parameters
-        #Notice that we need to specify them in the correct dataformat for the
-        #OpenCL kernel
-        self.nx = np.int32(nx)
-        self.ny = np.int32(ny)
-        self.dx = np.float32(dx)
-        self.dy = np.float32(dy)
-        self.dt = np.float32(dt)
-        self.g = np.float32(g)
-        self.theta = np.float32(theta)
-        
-        #Initialize time
-        self.t = np.float32(0.0)
-        
-        #Compute kernel launch parameters
-        self.local_size = (block_width, block_height, 1)
-        self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0]))), \
-                       int(np.ceil(self.ny / float(self.local_size[1]))) \
-                      )
-    
-    
     def __str__(self):
         return "Harten-Lax-van Leer (2nd order)"
     
-    
-    """
-    Function which steps n timesteps
-    """
-    def step(self, t_end=0.0):
-        n = int(t_end / (2.0*self.dt) + 1)
+    def simulate(self, t_end):
+        return super().simulateDimsplit(t_end)
         
-        for i in range(0, n): 
-            #Dimensional splitting: second order accurate for every other timestep,
-            #thus run two timesteps in a go
-            
-            local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
-            if (local_dt <= 0.0):
-                break
+    def stepEuler(self, dt):
+        return self.stepDimsplitXY(dt)
                 
-            #Along X, then Y
-            self.hll2_kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
-                    self.nx, self.ny, \
-                    self.dx, self.dy, local_dt, \
-                    self.g, \
-                    self.theta, \
-                    np.int32(0), \
-                    self.data.h0.data.gpudata, self.data.h0.pitch, \
-                    self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                    self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                    self.data.h1.data.gpudata, self.data.h1.pitch, \
-                    self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                    self.data.hv1.data.gpudata, self.data.hv1.pitch)
-            self.data.swap()
+    def stepDimsplitXY(self, dt):
+        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+                self.nx, self.ny, \
+                self.dx, self.dy, dt, \
+                self.g, \
+                self.theta, \
+                np.int32(0), \
+                self.data.h0.data.gpudata, self.data.h0.pitch, \
+                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
+                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
+                self.data.h1.data.gpudata, self.data.h1.pitch, \
+                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
+                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+        self.data.swap()
+        self.t += dt
             
-            #Along Y, then X
-            self.hll2_kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
-                    self.nx, self.ny, \
-                    self.dx, self.dy, local_dt, \
-                    self.g, \
-                    self.theta, \
-                    np.int32(1), \
-                    self.data.h0.data.gpudata, self.data.h0.pitch, \
-                    self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                    self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                    self.data.h1.data.gpudata, self.data.h1.pitch, \
-                    self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                    self.data.hv1.data.gpudata, self.data.hv1.pitch)
-            self.data.swap()
-            
-            self.t += local_dt
-            
+    def stepDimsplitYX(self, dt):
+        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+                self.nx, self.ny, \
+                self.dx, self.dy, dt, \
+                self.g, \
+                self.theta, \
+                np.int32(1), \
+                self.data.h0.data.gpudata, self.data.h0.pitch, \
+                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
+                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
+                self.data.h1.data.gpudata, self.data.h1.pitch, \
+                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
+                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+        self.data.swap()
+        self.t += dt
         
-        return self.t, 2*n
-    
-    
-    
-    def download(self):
-        return self.data.download(self.stream)
-

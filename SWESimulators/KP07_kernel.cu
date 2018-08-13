@@ -25,12 +25,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "limiters.cu"
+#include "fluxes/CentralUpwind.cu"
 
 
 __device__
-void computeFluxF(float Q[3][block_height+4][block_width+4],
-                  float Qx[3][block_height+2][block_width+2],
-                  float F[3][block_height+1][block_width+1],
+void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
     const int tx = get_local_id(0);
@@ -39,7 +41,7 @@ void computeFluxF(float Q[3][block_height+4][block_width+4],
     {
         int j=ty;
         const int l = j + 2; //Skip ghost cells
-        for (int i=tx; i<block_width+1; i+=block_width) {
+        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
             const int k = i + 1;
             // Q at interface from the right and left
             const float3 Qp = make_float3(Q[0][l][k+1] - 0.5f*Qx[0][j][i+1],
@@ -59,15 +61,15 @@ void computeFluxF(float Q[3][block_height+4][block_width+4],
 }
 
 __device__
-void computeFluxG(float Q[3][block_height+4][block_width+4],
-                  float Qy[3][block_height+2][block_width+2],
-                  float G[3][block_height+1][block_width+1],
+void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float Qy[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
     const int tx = get_local_id(0);
     const int ty = get_local_id(1);
     
-    for (int j=ty; j<block_height+1; j+=block_height) {
+    for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j + 1;
         {
             int i=tx;
@@ -104,8 +106,6 @@ __global__ void KP07Kernel(
         
         float theta_,
         
-        float r_, //< Bottom friction coefficient
-        
         int step_,
         
         //Input h^n
@@ -127,14 +127,14 @@ __global__ void KP07Kernel(
     const int tj = get_global_id(1) + 2;
     
     //Shared memory variables
-    __shared__ float Q[3][block_height+4][block_width+4];
+    __shared__ float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4];
     
     //The following slightly wastes memory, but enables us to reuse the 
     //funcitons in common.opencl
-    __shared__ float Qx[3][block_height+2][block_width+2];
-    __shared__ float Qy[3][block_height+2][block_width+2];
-    __shared__ float F[3][block_height+1][block_width+1];
-    __shared__ float G[3][block_height+1][block_width+1];
+    __shared__ float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
+    __shared__ float Qy[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
+    __shared__ float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
+    __shared__ float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
     
     
     
@@ -178,15 +178,13 @@ __global__ void KP07Kernel(
         float* const h_row  = (float*) ((char*) h1_ptr_ + h1_pitch_*tj);
         float* const hu_row = (float*) ((char*) hu1_ptr_ + hu1_pitch_*tj);
         float* const hv_row = (float*) ((char*) hv1_ptr_ + hv1_pitch_*tj);
-        
-        const float C = 2.0f*r_*dt_/Q[0][j][i];
                     
         if  (step_ == 0) {
             //First step of RK2 ODE integrator
             
             h_row[ti] = h1;
-            hu_row[ti] = hu1 / (1.0f + C);
-            hv_row[ti] = hv1 / (1.0f + C);
+            hu_row[ti] = hu1;
+            hv_row[ti] = hv1;
         }
         else if (step_ == 1) {
             //Second step of RK2 ODE integrator
@@ -203,8 +201,8 @@ __global__ void KP07Kernel(
             
             //Write to main memory
             h_row[ti] = h_b;
-            hu_row[ti] = hu_b / (1.0f + 0.5f*C);
-            hv_row[ti] = hv_b / (1.0f + 0.5f*C);
+            hu_row[ti] = hu_b;
+            hv_row[ti] = hv_b;
         }
     }
 }

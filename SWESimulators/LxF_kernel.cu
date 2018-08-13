@@ -20,11 +20,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "fluxes/LaxFriedrichs.cu"
 
 
 /**
   * Computes the flux along the x axis for all faces
   */
+template <int block_width, int block_height>
 __device__ 
 void computeFluxF(float Q[3][block_height+2][block_width+2],
                   float F[3][block_height][block_width+1],
@@ -59,8 +61,9 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
 
 /**
   * Computes the flux along the y axis for all faces
-  */
-__device__ 
+  */ 
+template <int block_width, int block_height>
+__device__
 void computeFluxG(float Q[3][block_height+2][block_width+2],
                   float G[3][block_height+1][block_width],
                   const float g_, const float dy_, const float dt_) {
@@ -94,7 +97,9 @@ void computeFluxG(float Q[3][block_height+2][block_width+2],
 }
 
 
-__global__ void LxFKernel(
+extern "C" {
+__global__ 
+void LxFKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_,
@@ -108,6 +113,9 @@ __global__ void LxFKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
+            
+    const int block_width = BLOCK_WIDTH;
+    const int block_height = BLOCK_HEIGHT;
             
     //Index of cell within domain
     const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
@@ -130,8 +138,8 @@ __global__ void LxFKernel(
     
     
     //Compute fluxes along the x and y axis
-    computeFluxF(Q, F, g_, dx_, dt_);
-    computeFluxG(Q, G, g_, dy_, dt_);
+    computeFluxF<block_width, block_height>(Q, F, g_, dx_, dt_);
+    computeFluxG<block_width, block_height>(Q, G, g_, dy_, dt_);
     __syncthreads();
     
     
@@ -160,3 +168,6 @@ __global__ void LxFKernel(
         hv_row[ti] = hv1;
     }
 }
+
+} // extern "C"
+
