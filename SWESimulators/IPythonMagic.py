@@ -19,6 +19,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import logging
+
 from IPython.core.magic import line_magic, Magics, magics_class
 import pycuda.driver as cuda
 
@@ -28,29 +30,31 @@ import pycuda.driver as cuda
 class CudaContextHandler(Magics): 
     @line_magic
     def cuda_context_handler(self, context_name):
-        print("Registering " + context_name + " as a global context")
+        self.logger =  logging.getLogger(__name__)
+        
+        self.logger.debug("Registering %s as a global context", context_name)
         
         if context_name in self.shell.user_ns.keys():
-            print("`-> Context already registered! Ignoring")
+            self.logger.debug("Context already registered! Ignoring")
             return
         else:
-            print("`-> Creating context")
+            self.logger.debug("Creating context")
             self.shell.ex(context_name + " = Common.CudaContext(verbose=True, blocking=False)")
         
         # this function will be called on exceptions in any cell
         def custom_exc(shell, etype, evalue, tb, tb_offset=None):
-            print("Exception caught: Resetting to CUDA context " + context_name)
+            self.logger.exception("Exception caught: Resetting to CUDA context %s", context_name)
             while (cuda.Context.get_current() != None):
                 context = cuda.Context.get_current()
-                print("`-> popping " + str(context.handle))
+                self.logger.info("Popping <%s>", str(context.handle))
                 cuda.Context.pop()
 
             if context_name in self.shell.user_ns.keys():
-                print("`-> pushing " + str(self.shell.user_ns[context_name].cuda_context.handle))
+                self.logger.info("Pushing <%s>", str(self.shell.user_ns[context_name].cuda_context.handle))
                 self.shell.ex(context_name + ".cuda_context.push()")
             else:
-                print("No CUDA context called " + context_name + " found (something is wrong)!")
-                print("CUDA will not work now")
+                self.logger.error("No CUDA context called %s found (something is wrong)", context_name)
+                self.logger.error("CUDA will not work now")
 
             # still show the error within the notebook, don't just swallow it
             shell.showtraceback((etype, evalue, tb), tb_offset=tb_offset)
@@ -62,14 +66,15 @@ class CudaContextHandler(Magics):
         # Handle CUDA context when exiting python
         import atexit
         def exitfunc():
-            print("Exitfunc: Resetting CUDA context stack")
+            self.logger.info("Exitfunc: Resetting CUDA context stack")
             while (cuda.Context.get_current() != None):
                 context = cuda.Context.get_current()
-                print("`-> popping " + str(context.handle))
+                self.logger.info("`-> Popping <%s>", str(context.handle))
                 cuda.Context.pop()
         atexit.register(exitfunc)
 
-print("Registering automatic CUDA context handling")
-print("(use %cuda_context_handler my_context to create a context called my_context")
+logger = logging.getLogger(__name__)
+logger.info("Registering automatic CUDA context handling")
+logger.debug("(use %cuda_context_handler my_context to create a context called my_context")
 ip = get_ipython()
 ip.register_magics(CudaContextHandler)
