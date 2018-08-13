@@ -39,9 +39,10 @@ import pycuda.driver as cuda
 Class which keeps track of time spent for a section of code
 """
 class Timer(object):
-    def __init__(self, tag):
+    def __init__(self, tag, log_level=logging.DEBUG):
         self.tag = tag
-        self.logger =  logging.getLogger(__name__)
+        self.log_level = log_level
+        self.logger = logging.getLogger(__name__)
         
     def __enter__(self):
         self.start = time.time()
@@ -51,7 +52,7 @@ class Timer(object):
         self.end = time.time()
         self.secs = self.end - self.start
         self.msecs = self.secs * 1000 # millisecs
-        self.logger.info("%s: %f ms", self.tag, self.msecs)
+        self.logger.log(self.log_level, "%s: %f ms", self.tag, self.msecs)
             
             
             
@@ -276,11 +277,13 @@ class CUDAArray2D:
     Uploads initial data to the CL device
     """
     def __init__(self, stream, nx, ny, halo_x, halo_y, data):
-        
+        self.logger =  logging.getLogger(__name__)
         self.nx = nx
         self.ny = ny
         self.nx_halo = nx + 2*halo_x
         self.ny_halo = ny + 2*halo_y
+        
+        self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
         
         #Make sure data is in proper format
         assert np.issubdtype(data.dtype, np.float32), "Wrong datatype: %s" % str(data.dtype)
@@ -293,17 +296,26 @@ class CUDAArray2D:
         self.bytes_per_float = data.itemsize
         assert(self.bytes_per_float == 4)
         self.pitch = np.int32((self.nx_halo)*self.bytes_per_float)
+        self.logger.debug("Buffer <%s> [%dx%d]: Allocated ", int(self.data.gpudata), self.nx, self.ny)
         
+        
+    def __del__(self, *args):
+        self.logger.debug("Buffer <%s> [%dx%d]: Releasing ", int(self.data.gpudata), self.nx, self.ny)
+        self.data.gpudata.free()
+        self.data = None
         
     """
     Enables downloading data from CL device to Python
     """
     def download(self, stream, async=False):
+        
         #Copy data from device to host
         if (async):
+            self.logger.debug("Buffer <%s> [%dx%d]: Downloading async ", int(self.data.gpudata), self.nx, self.ny)
             host_data = self.data.get_async(stream=stream)
             return host_data
         else:
+            self.logger.debug("Buffer <%s> [%dx%d]: Downloading synchronously", int(self.data.gpudata), self.nx, self.ny)
             host_data = self.data.get(stream=stream)#, pagelocked=True) # pagelocked causes crash on windows at least
             return host_data
 

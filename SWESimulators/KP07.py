@@ -48,7 +48,6 @@ class KP07 (Simulator.BaseSimulator):
     dy: Grid cell spacing along y-axis (20 000 m)
     dt: Size of each timestep (90 s)
     g: Gravitational accelleration (9.81 m/s^2)
-    r: Bottom friction coefficient (2.4e-3 m/s)
     """
     def __init__(self, \
                  context, \
@@ -56,7 +55,7 @@ class KP07 (Simulator.BaseSimulator):
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
-                 theta=1.3, r=0.0, \
+                 theta=1.3, \
                  block_width=16, block_height=16):
                  
         # Call super constructor
@@ -69,11 +68,10 @@ class KP07 (Simulator.BaseSimulator):
             block_width, block_height);
             
         self.theta = np.float32(theta)
-        self.r = np.float32(r)
 
         #Get kernels
         self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
-                                        "iiffffffiPiPiPiPiPiPi", \
+                                        "iifffffiPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=block_width, \
                                         BLOCK_HEIGHT=block_height)
         
@@ -89,7 +87,6 @@ class KP07 (Simulator.BaseSimulator):
                 self.dx, self.dy, dt, \
                 self.g, \
                 self.theta, \
-                self.r, \
                 np.int32(substep), \
                 self.data.h0.data.gpudata,  self.data.h0.pitch,  \
                 self.data.hu0.data.gpudata, self.data.hu0.pitch, \
