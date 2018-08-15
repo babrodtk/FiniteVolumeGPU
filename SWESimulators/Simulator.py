@@ -183,4 +183,7 @@ class BaseSimulator:
 
     def download(self):
         return self.data.download(self.stream)
+        
+    def synchronize(self):
+        self.stream.synchronize()
 

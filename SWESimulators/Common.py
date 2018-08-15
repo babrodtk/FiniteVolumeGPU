@@ -28,6 +28,7 @@ import re
 import io
 import hashlib
 import logging
+import gc
 
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
@@ -261,7 +262,15 @@ class CudaContext(object):
     Clears the kernel cache (useful for debugging & development)
     """
     def clear_kernel_cache(self):
+        self.logger.debug("Clearing cache")
         self.kernels = {}
+        gc.collect()
+        
+    """
+    Synchronizes all streams etc
+    """
+    def synchronize(self):
+        self.cuda_context.synchronize()
         
         
         
