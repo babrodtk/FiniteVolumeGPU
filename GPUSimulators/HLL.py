@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This python module implements the FORCE flux
-for the shallow water equations
+This python module implements the HLL flux
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -21,22 +20,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
-from SWESimulators import Simulator
+from GPUSimulators import Simulator
 
 
 
-        
-        
-        
-        
-        
-        
+
+
 
 
 """
-Class that solves the SW equations 
+Class that solves the SW equations using the Harten-Lax -van Leer approximate Riemann solver
 """
-class FORCE (Simulator.BaseSimulator):
+class HLL (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -68,14 +63,14 @@ class FORCE (Simulator.BaseSimulator):
             block_width, block_height);
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("FORCE_kernel.cu", "FORCEKernel", \
+        self.kernel = context.get_prepared_kernel("HLL_kernel.cu", "HLLKernel", \
                                         "iiffffPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=block_width, \
-                                        BLOCK_HEIGHT=block_height)
+                                        BLOCK_WIDTH=self.local_size[0], \
+                                        BLOCK_HEIGHT=self.local_size[1])
     
     def __str__(self):
-        return "First order centered"
-        
+        return "Harten-Lax-van Leer"
+    
     def simulate(self, t_end):
         return super().simulateEuler(t_end)
         
@@ -84,13 +79,13 @@ class FORCE (Simulator.BaseSimulator):
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
-                self.data.h0.data.gpudata, self.data.h0.pitch, \
-                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                self.data.h1.data.gpudata, self.data.h1.pitch, \
-                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+                self.data.h0.data.gpudata,  self.data.h0.data.strides[0],  \
+                self.data.hu0.data.gpudata, self.data.hu0.data.strides[0], \
+                self.data.hv0.data.gpudata, self.data.hv0.data.strides[0], \
+                self.data.h1.data.gpudata,  self.data.h1.data.strides[0],  \
+                self.data.hu1.data.gpudata, self.data.hu1.data.strides[0], \
+                self.data.hv1.data.gpudata, self.data.hv1.data.strides[0])        
         self.data.swap()
         self.t += dt
         
-        
+

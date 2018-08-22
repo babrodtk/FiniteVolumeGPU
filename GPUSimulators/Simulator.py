@@ -28,7 +28,7 @@ import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
 import pycuda.driver as cuda
 
-from SWESimulators import Common
+from GPUSimulators import Common
 
 
 class BaseSimulator:
@@ -56,6 +56,14 @@ class BaseSimulator:
                  block_width, block_height):
         #Get logger
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
+        
+        self.context = context
+        
+        if (self.context.autotuner):
+            peak_configuration = self.context.autotuner.get_peak_performance(self.__class__)
+            block_width = int(peak_configuration["block_width"])
+            block_height = int(peak_configuration["block_height"])
+            self.logger.debug("Used autotuning to get block size [%d x %d]", block_width, block_height)
         
         #Create a CUDA stream
         self.stream = cuda.Stream()
@@ -85,7 +93,7 @@ class BaseSimulator:
                        int(np.ceil(self.nx / float(self.local_size[0]))), \
                        int(np.ceil(self.ny / float(self.local_size[1]))) \
                       ) 
-
+                      
     """
     Function which simulates forward in time using the default simulation type
     """
