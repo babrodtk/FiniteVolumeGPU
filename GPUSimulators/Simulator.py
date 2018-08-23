@@ -48,9 +48,7 @@ class BaseSimulator:
     """
     def __init__(self, \
                  context, \
-                 h0, hu0, hv0, \
                  nx, ny, \
-                 ghost_cells_x, ghost_cells_y, \
                  dx, dy, dt, \
                  g, \
                  block_width, block_height):
@@ -67,14 +65,6 @@ class BaseSimulator:
         
         #Create a CUDA stream
         self.stream = cuda.Stream()
-        
-        #Create data by uploading to device
-        free, total = cuda.mem_get_info()
-        self.logger.debug("GPU memory: %d / %d MB available", int(free/(1024*1024)), int(total/(1024*1024)))
-        self.data = Common.SWEDataArakawaA(self.stream, \
-                            nx, ny, \
-                            ghost_cells_x, ghost_cells_y, \
-                            h0, hu0, hv0)
                            
         #Save input parameters
         #Notice that we need to specify them in the correct dataformat for the
@@ -94,7 +84,7 @@ class BaseSimulator:
         self.global_size = ( \
                        int(np.ceil(self.nx / float(self.local_size[0]))), \
                        int(np.ceil(self.ny / float(self.local_size[1]))) \
-                      ) 
+                      )
                       
     """
     Function which simulates forward in time using the default simulation type
@@ -192,7 +182,7 @@ class BaseSimulator:
         return self.t
 
     def download(self):
-        return self.data.download(self.stream)
+        raise(NotImplementedError("Needs to be implemented in subclass"))
         
     def synchronize(self):
         self.stream.synchronize()

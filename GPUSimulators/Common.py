@@ -84,7 +84,6 @@ class CudaContext(object):
         self.cuda_device = cuda.Device(0)
         self.logger.info("Using '%s' GPU", self.cuda_device.name())
         self.logger.debug(" => compute capability: %s", str(self.cuda_device.compute_capability()))
-        self.logger.debug(" => memory: %d MB", self.cuda_device.total_memory() / (1024*1024))
 
         # Create the CUDA context
         if (self.blocking):
@@ -92,6 +91,9 @@ class CudaContext(object):
             self.logger.warning("Using blocking context")
         else:
             self.cuda_context = self.cuda_device.make_context(flags=cuda.ctx_flags.SCHED_AUTO)
+            
+        free, total = cuda.mem_get_info()
+        self.logger.debug(" => memory: %d / %d MB available", int(free/(1024*1024)), int(total/(1024*1024)))
         
         self.logger.info("Created context handle <%s>", str(self.cuda_context.handle))
         
@@ -294,7 +296,7 @@ class CudaArray2D:
     """
     Uploads initial data to the CL device
     """
-    def __init__(self, stream, nx, ny, x_halo, y_halo, cpu_data):
+    def __init__(self, stream, nx, ny, x_halo, y_halo, cpu_data=None, dtype=np.float32):
         self.logger =  logging.getLogger(__name__)
         self.nx = nx
         self.ny = ny
@@ -307,16 +309,18 @@ class CudaArray2D:
         #self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
         
         #Make sure data is in proper format
-        assert np.issubdtype(cpu_data.dtype, np.float32), "Wrong datatype: %s" % str(cpu_data.dtype)
-        assert cpu_data.itemsize == 4, "Wrong size of data type"
-        assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
+        if cpu_data is not None:
+            assert cpu_data.itemsize == 4, "Wrong size of data type"
+            assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
 
         #Upload data to the device
-        if (cpu_data.shape == (ny_halo, nx_halo)):
+        if cpu_data is None:
+            self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), dtype)
+        elif (cpu_data.shape == (ny_halo, nx_halo)):
             self.data = pycuda.gpuarray.to_gpu_async(cpu_data, stream=stream)
         elif (cpu_data.shape == (self.ny, self.nx)):
             #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
-            self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), cpu_data.dtype)
+            self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), dtype)
             #self.data.fill(0.0)
             
             #Create copy object from host to device
@@ -337,7 +341,6 @@ class CudaArray2D:
             #Perform the copy
             copy(stream)
             stream.synchronize()
-
         else:
             assert False, "Wrong data shape: %s vs %s / %s" % (str(cpu_data.shape), str((self.ny, self.nx)), str((ny_halo, nx_halo)))
         
@@ -390,36 +393,31 @@ class CudaArray2D:
 """
 A class representing an Arakawa A type (unstaggered, logically Cartesian) grid
 """
-class SWEDataArakawaA:
+class ArakawaA2D:
     """
     Uploads initial data to the CL device
     """
-    def __init__(self, stream, nx, ny, halo_x, halo_y, h0, hu0, hv0):
+    def __init__(self, stream, nx, ny, halo_x, halo_y, cpu_variables):
         self.logger =  logging.getLogger(__name__)
-        self.h0  = CudaArray2D(stream, nx, ny, halo_x, halo_y, h0)
-        self.hu0 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hu0)
-        self.hv0 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hv0)
+        self.gpu_variables = []
+        for cpu_variable in cpu_variables:
+            self.gpu_variables += [CudaArray2D(stream, nx, ny, halo_x, halo_y, cpu_variable)]
         
-        self.h1  = CudaArray2D(stream, nx, ny, halo_x, halo_y, h0)
-        self.hu1 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hu0)
-        self.hv1 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hv0)
-
-    """
-    Swaps the variables after a timestep has been completed
-    """
-    def swap(self):
-        self.h1,  self.h0  = self.h0,  self.h1
-        self.hu1, self.hu0 = self.hu0, self.hu1
-        self.hv1, self.hv0 = self.hv0, self.hv1
-        
+    def __getitem__(self, key):
+        assert type(key) == int, "Indexing is int based"
+        if (key > len(self.gpu_variables) or key < 0):
+            raise IndexError("Out of bounds")
+        return self.gpu_variables[key]
+    
     """
     Enables downloading data from CL device to Python
     """
     def download(self, stream):
-        h_cpu  = self.h0.download(stream, async=True)
-        hu_cpu = self.hu0.download(stream, async=True)
-        hv_cpu = self.hv0.download(stream, async=False)
+        cpu_variables = []
+        for gpu_variable in self.gpu_variables:
+            cpu_variables += [gpu_variable.download(stream, async=True)]
+        stream.synchronize()
+        return cpu_variables
         
-        return h_cpu, hu_cpu, hv_cpu
         
-        
+    
