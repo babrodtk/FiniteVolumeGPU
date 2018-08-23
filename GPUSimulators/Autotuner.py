@@ -29,7 +29,7 @@ from socket import gethostname
 import pycuda.driver as cuda
 
 
-from GPUSimulators import Common, LxF, FORCE, HLL, HLL2, KP07, KP07_dimsplit, WAF
+from GPUSimulators import Common, Simulator
 
 class Autotuner:
     def __init__(self, 
