@@ -28,12 +28,13 @@ import re
 import io
 import hashlib
 import logging
+import gc
 
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
 import pycuda.driver as cuda
 
-
+from GPUSimulators import Autotuner
 
 """
 Class which keeps track of time spent for a section of code
@@ -63,8 +64,7 @@ Class which keeps track of the CUDA context and some helper functions
 """
 class CudaContext(object):
     
-    def __init__(self, verbose=True, blocking=False, use_cache=True):
-        self.verbose = verbose
+    def __init__(self, blocking=False, use_cache=True, autotuning=True):
         self.blocking = blocking
         self.use_cache = use_cache
         self.logger =  logging.getLogger(__name__)
@@ -75,15 +75,16 @@ class CudaContext(object):
         #Initialize cuda (must be first call to PyCUDA)
         cuda.init(flags=0)
         
+        self.logger.info("PyCUDA version %s", str(pycuda.VERSION_TEXT))
+        
         #Print some info about CUDA
         self.logger.info("CUDA version %s", str(cuda.get_version()))
         self.logger.info("Driver version %s",  str(cuda.get_driver_version()))
 
         self.cuda_device = cuda.Device(0)
-        if (self.verbose):
-            self.logger.info("Using '%s' GPU", self.cuda_device.name())
-            self.logger.debug(" => compute capability: %s", str(self.cuda_device.compute_capability()))
-            self.logger.debug(" => memory: %d MB", self.cuda_device.total_memory() / (1024*1024))
+        self.logger.info("Using '%s' GPU", self.cuda_device.name())
+        self.logger.debug(" => compute capability: %s", str(self.cuda_device.compute_capability()))
+        self.logger.debug(" => memory: %d MB", self.cuda_device.total_memory() / (1024*1024))
 
         # Create the CUDA context
         if (self.blocking):
@@ -100,6 +101,11 @@ class CudaContext(object):
             if not os.path.isdir(self.cache_path):
                 os.mkdir(self.cache_path)
             self.logger.debug("Using CUDA cache dir %s", self.cache_path)
+            
+        self.autotuner = None
+        if (autotuning):
+            self.logger.info("Autotuning enabled. It may take several minutes to run the code the first time: have patience")
+            self.autotuner = Autotuner.Autotuner()
             
     
     def __del__(self, *args):
@@ -130,7 +136,7 @@ class CudaContext(object):
         return "CudaContext id " + str(self.cuda_context.handle)
         
     
-    def hash_kernel(kernel_filename, include_dirs, verbose=False):        
+    def hash_kernel(kernel_filename, include_dirs):        
         # Generate a kernel ID for our caches
         num_includes = 0
         max_includes = 100
@@ -146,7 +152,7 @@ class CudaContext(object):
         
             filename = files.pop()
             
-            logger.debug("Hashing %s", filename)
+            #logger.debug("Hashing %s", filename)
                 
             modified = os.path.getmtime(filename)
                 
@@ -182,7 +188,7 @@ class CudaContext(object):
     """
     def get_prepared_kernel(self, kernel_filename, kernel_function_name, \
                     prepared_call_args, \
-                    include_dirs=[], verbose=False, no_extern_c=True, 
+                    include_dirs=[], no_extern_c=True, 
                     **kwargs):
         """
         Helper function to print compilation output
@@ -194,7 +200,7 @@ class CudaContext(object):
             if error_str:
                 self.logger.debug("Error: %s", error_str)
         
-        self.logger.debug("Getting %s", kernel_filename)
+        #self.logger.debug("Getting %s", kernel_filename)
             
         # Create a hash of the kernel (and its includes)
         kwargs_hasher = hashlib.md5()
@@ -205,8 +211,7 @@ class CudaContext(object):
         kernel_hash = root \
                 + "_" + CudaContext.hash_kernel( \
                     os.path.join(self.module_path, kernel_filename), \
-                    include_dirs=[self.module_path] + include_dirs, \
-                    verbose=verbose) \
+                    include_dirs=[self.module_path] + include_dirs) \
                 + "_" + kwargs_hash \
                 + ext
         cached_kernel_filename = os.path.join(self.cache_path, kernel_hash)
@@ -261,63 +266,118 @@ class CudaContext(object):
     Clears the kernel cache (useful for debugging & development)
     """
     def clear_kernel_cache(self):
+        self.logger.debug("Clearing cache")
         self.kernels = {}
+        gc.collect()
         
+    """
+    Synchronizes all streams etc
+    """
+    def synchronize(self):
+        self.cuda_context.synchronize()
         
-        
-        
-        
-        
+
+
+
+
+
+
+
+
+
+
 
 """
 Class that holds data 
 """
-class CUDAArray2D:
+class CudaArray2D:
     """
     Uploads initial data to the CL device
     """
-    def __init__(self, stream, nx, ny, halo_x, halo_y, data):
+    def __init__(self, stream, nx, ny, x_halo, y_halo, cpu_data):
         self.logger =  logging.getLogger(__name__)
         self.nx = nx
         self.ny = ny
-        self.nx_halo = nx + 2*halo_x
-        self.ny_halo = ny + 2*halo_y
+        self.x_halo = x_halo
+        self.y_halo = y_halo
         
-        self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
+        nx_halo = nx + 2*x_halo
+        ny_halo = ny + 2*y_halo
+        
+        #self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
         
         #Make sure data is in proper format
-        assert np.issubdtype(data.dtype, np.float32), "Wrong datatype: %s" % str(data.dtype)
-        assert not np.isfortran(data), "Wrong datatype (Fortran, expected C)"
-        assert data.shape == (self.ny_halo, self.nx_halo), "Wrong data shape: %s vs %s" % (str(data.shape), str((self.ny_halo, self.nx_halo)))
+        assert np.issubdtype(cpu_data.dtype, np.float32), "Wrong datatype: %s" % str(cpu_data.dtype)
+        assert cpu_data.itemsize == 4, "Wrong size of data type"
+        assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
 
         #Upload data to the device
-        self.data = pycuda.gpuarray.to_gpu_async(data, stream=stream)
+        if (cpu_data.shape == (ny_halo, nx_halo)):
+            self.data = pycuda.gpuarray.to_gpu_async(cpu_data, stream=stream)
+        elif (cpu_data.shape == (self.ny, self.nx)):
+            #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
+            self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), cpu_data.dtype)
+            #self.data.fill(0.0)
+            
+            #Create copy object from host to device
+            copy = cuda.Memcpy2D()
+            copy.set_src_host(cpu_data)
+            copy.set_dst_device(self.data.gpudata)
+            
+            #Set offsets and pitch of destination
+            copy.dst_x_in_bytes = self.x_halo*self.data.strides[1]
+            copy.dst_y = self.y_halo
+            copy.dst_pitch = self.data.strides[0]
+            
+            #Set width in bytes to copy for each row and
+            #number of rows to copy
+            copy.width_in_bytes = self.nx*cpu_data.itemsize
+            copy.height = self.ny
+            
+            #Perform the copy
+            copy(stream)
+            stream.synchronize()
+
+        else:
+            assert False, "Wrong data shape: %s vs %s / %s" % (str(cpu_data.shape), str((self.ny, self.nx)), str((ny_halo, nx_halo)))
         
-        self.bytes_per_float = data.itemsize
-        assert(self.bytes_per_float == 4)
-        self.pitch = np.int32((self.nx_halo)*self.bytes_per_float)
-        self.logger.debug("Buffer <%s> [%dx%d]: Allocated ", int(self.data.gpudata), self.nx, self.ny)
+        #self.logger.debug("Buffer <%s> [%dx%d]: Allocated ", int(self.data.gpudata), self.nx, self.ny)
         
         
     def __del__(self, *args):
-        self.logger.debug("Buffer <%s> [%dx%d]: Releasing ", int(self.data.gpudata), self.nx, self.ny)
+        #self.logger.debug("Buffer <%s> [%dx%d]: Releasing ", int(self.data.gpudata), self.nx, self.ny)
         self.data.gpudata.free()
         self.data = None
         
     """
-    Enables downloading data from CL device to Python
+    Enables downloading data from GPU to Python
     """
     def download(self, stream, async=False):
+        #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
+        #Allocate host memory
+        #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
+        cpu_data = np.empty((self.ny, self.nx), dtype=np.float32)
         
-        #Copy data from device to host
-        if (async):
-            self.logger.debug("Buffer <%s> [%dx%d]: Downloading async ", int(self.data.gpudata), self.nx, self.ny)
-            host_data = self.data.get_async(stream=stream)
-            return host_data
-        else:
-            self.logger.debug("Buffer <%s> [%dx%d]: Downloading synchronously", int(self.data.gpudata), self.nx, self.ny)
-            host_data = self.data.get(stream=stream)#, pagelocked=True) # pagelocked causes crash on windows at least
-            return host_data
+        #Create copy object from device to host
+        copy = cuda.Memcpy2D()
+        copy.set_src_device(self.data.gpudata)
+        copy.set_dst_host(cpu_data)
+        
+        #Set offsets and pitch of source
+        copy.src_x_in_bytes = self.x_halo*self.data.strides[1]
+        copy.src_y = self.y_halo
+        copy.src_pitch = self.data.strides[0]
+        
+        #Set width in bytes to copy for each row and
+        #number of rows to copy
+        copy.width_in_bytes = self.nx*cpu_data.itemsize
+        copy.height = self.ny
+        
+        copy(stream)
+        if async==False:
+            stream.synchronize()
+        
+        return cpu_data
 
         
         
@@ -335,13 +395,13 @@ class SWEDataArakawaA:
     Uploads initial data to the CL device
     """
     def __init__(self, stream, nx, ny, halo_x, halo_y, h0, hu0, hv0):
-        self.h0  = CUDAArray2D(stream, nx, ny, halo_x, halo_y, h0)
-        self.hu0 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hu0)
-        self.hv0 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hv0)
+        self.h0  = CudaArray2D(stream, nx, ny, halo_x, halo_y, h0)
+        self.hu0 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hu0)
+        self.hv0 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hv0)
         
-        self.h1  = CUDAArray2D(stream, nx, ny, halo_x, halo_y, h0)
-        self.hu1 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hu0)
-        self.hv1 = CUDAArray2D(stream, nx, ny, halo_x, halo_y, hv0)
+        self.h1  = CudaArray2D(stream, nx, ny, halo_x, halo_y, h0)
+        self.hu1 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hu0)
+        self.hv1 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hv0)
 
     """
     Swaps the variables after a timestep has been completed

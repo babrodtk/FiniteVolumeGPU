@@ -99,6 +99,7 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
 /**
   * This unsplit kernel computes the 2D numerical scheme with a TVD RK2 time integration scheme
   */
+extern "C" {
 __global__ void KP07Kernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
@@ -206,3 +207,4 @@ __global__ void KP07Kernel(
         }
     }
 }
+} //extern "C"

@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 
 """
-This python module implements the classical Lax-Friedrichs numerical
-scheme for the shallow water equations
+This python module implements the Kurganov-Petrova numerical scheme 
+for the shallow water equations, described in 
+A. Kurganov & Guergana Petrova
+A Second-Order Well-Balanced Positivity Preserving Central-Upwind
+Scheme for the Saint-Venant System Communications in Mathematical
+Sciences, 5 (2007), 133-160. 
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -21,18 +25,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
-from SWESimulators import Simulator
-
-
+import numpy as np
+from GPUSimulators import Simulator
 
 
 
 
 
 """
-Class that solves the SW equations using the Lax Friedrichs scheme
+Class that solves the SW equations using the Forward-Backward linear scheme
 """
-class LxF (Simulator.BaseSimulator):
+class KP07 (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -52,41 +55,58 @@ class LxF (Simulator.BaseSimulator):
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
+                 theta=1.3, \
                  block_width=16, block_height=16):
                  
         # Call super constructor
         super().__init__(context, \
             h0, hu0, hv0, \
             nx, ny, \
-            1, 1, \
+            2, 2, \
             dx, dy, dt, \
             g, \
             block_width, block_height);
+            
+        self.theta = np.float32(theta)
 
-        # Get kernels
-        self.kernel = context.get_prepared_kernel("LxF_kernel.cu", "LxFKernel", \
-                                        "iiffffPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=block_width, \
-                                        BLOCK_HEIGHT=block_height)
+        #Get kernels
+        self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
+                                        "iifffffiPiPiPiPiPiPi", \
+                                        BLOCK_WIDTH=self.local_size[0], \
+                                        BLOCK_HEIGHT=self.local_size[1])
         
     def __str__(self):
-        return "Lax Friedrichs"
-        
+        return "Kurganov-Petrova 2007"
+    
     def simulate(self, t_end):
-        return super().simulateEuler(t_end)
+        return super().simulateRK(t_end, 2)
         
-    def stepEuler(self, dt):
+    def substepRK(self, dt, substep):
         self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
-                self.data.h0.data.gpudata, self.data.h0.pitch, \
-                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                self.data.h1.data.gpudata, self.data.h1.pitch, \
-                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+                self.theta, \
+                np.int32(substep), \
+                self.data.h0.data.gpudata,  self.data.h0.data.strides[0],  \
+                self.data.hu0.data.gpudata, self.data.hu0.data.strides[0], \
+                self.data.hv0.data.gpudata, self.data.hv0.data.strides[0], \
+                self.data.h1.data.gpudata,  self.data.h1.data.strides[0],  \
+                self.data.hu1.data.gpudata, self.data.hu1.data.strides[0], \
+                self.data.hv1.data.gpudata, self.data.hv1.data.strides[0])
         self.data.swap()
+        
+    def stepEuler(self, dt):
+        self.substepRK(dt, 0)
         self.t += dt
-  
+        
+    def stepRK(self, dt, order):
+        if (order != 2):
+            raise NotImplementedError("Only second order implemented")
+        self.substepRK(dt, 0)
+        self.substepRK(dt, 1)
+        self.t += dt
+    
+    def download(self):
+        return self.data.download(self.stream)
 

@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 
 """
-This python module implements the 2nd order HLL flux
+This python module implements the Kurganov-Petrova numerical scheme 
+for the shallow water equations, described in 
+A. Kurganov & Guergana Petrova
+A Second-Order Well-Balanced Positivity Preserving Central-Upwind
+Scheme for the Saint-Venant System Communications in Mathematical
+Sciences, 5 (2007), 133-160. 
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -21,20 +26,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 import numpy as np
-from SWESimulators import Simulator
+from GPUSimulators import Simulator
 
 
-        
-        
-        
-        
-        
+
 
 
 """
-Class that solves the SW equations using the Forward-Backward linear scheme
+Class that solves the SW equations using the dimentionally split KP07 scheme
 """
-class HLL2 (Simulator.BaseSimulator):
+class KP07_dimsplit (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -54,7 +55,7 @@ class HLL2 (Simulator.BaseSimulator):
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
-                 theta=1.8, \
+                 theta=1.3, \
                  block_width=16, block_height=16):
                  
         # Call super constructor
@@ -69,20 +70,20 @@ class HLL2 (Simulator.BaseSimulator):
         self.theta = np.float32(theta)
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("HLL2_kernel.cu", "HLL2Kernel", \
+        self.kernel = context.get_prepared_kernel("KP07_dimsplit_kernel.cu", "KP07DimsplitKernel", \
                                         "iifffffiPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=block_width, \
-                                        BLOCK_HEIGHT=block_height)
-        
+                                        BLOCK_WIDTH=self.local_size[0], \
+                                        BLOCK_HEIGHT=self.local_size[1])
+    
     def __str__(self):
-        return "Harten-Lax-van Leer (2nd order)"
+        return "Kurganov-Petrova 2007 dimensionally split"
     
     def simulate(self, t_end):
         return super().simulateDimsplit(t_end)
-        
+    
     def stepEuler(self, dt):
         return self.stepDimsplitXY(dt)
-                
+    
     def stepDimsplitXY(self, dt):
         self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
                 self.nx, self.ny, \
@@ -90,15 +91,15 @@ class HLL2 (Simulator.BaseSimulator):
                 self.g, \
                 self.theta, \
                 np.int32(0), \
-                self.data.h0.data.gpudata, self.data.h0.pitch, \
-                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                self.data.h1.data.gpudata, self.data.h1.pitch, \
-                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+                self.data.h0.data.gpudata,  self.data.h0.data.strides[0], \
+                self.data.hu0.data.gpudata, self.data.hu0.data.strides[0], \
+                self.data.hv0.data.gpudata, self.data.hv0.data.strides[0], \
+                self.data.h1.data.gpudata,  self.data.h1.data.strides[0], \
+                self.data.hu1.data.gpudata, self.data.hu1.data.strides[0], \
+                self.data.hv1.data.gpudata, self.data.hv1.data.strides[0])
         self.data.swap()
         self.t += dt
-            
+    
     def stepDimsplitYX(self, dt):
         self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
                 self.nx, self.ny, \
@@ -106,12 +107,13 @@ class HLL2 (Simulator.BaseSimulator):
                 self.g, \
                 self.theta, \
                 np.int32(1), \
-                self.data.h0.data.gpudata, self.data.h0.pitch, \
-                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                self.data.h1.data.gpudata, self.data.h1.pitch, \
-                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+                self.data.h0.data.gpudata,  self.data.h0.data.strides[0], \
+                self.data.hu0.data.gpudata, self.data.hu0.data.strides[0], \
+                self.data.hv0.data.gpudata, self.data.hv0.data.strides[0], \
+                self.data.h1.data.gpudata,  self.data.h1.data.strides[0], \
+                self.data.hu1.data.gpudata, self.data.hu1.data.strides[0], \
+                self.data.hv1.data.gpudata, self.data.hv1.data.strides[0])
         self.data.swap()
         self.t += dt
+        
         

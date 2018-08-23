@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-This python module implements the Kurganov-Petrova numerical scheme 
-for the shallow water equations, described in 
-A. Kurganov & Guergana Petrova
-A Second-Order Well-Balanced Positivity Preserving Central-Upwind
-Scheme for the Saint-Venant System Communications in Mathematical
-Sciences, 5 (2007), 133-160. 
+This python module implements the classical Lax-Friedrichs numerical
+scheme for the shallow water equations
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -25,17 +21,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
-import numpy as np
-from SWESimulators import Simulator
+from GPUSimulators import Simulator
+
+
 
 
 
 
 
 """
-Class that solves the SW equations using the Forward-Backward linear scheme
+Class that solves the SW equations using the Lax Friedrichs scheme
 """
-class KP07 (Simulator.BaseSimulator):
+class LxF (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -55,58 +52,41 @@ class KP07 (Simulator.BaseSimulator):
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
-                 theta=1.3, \
                  block_width=16, block_height=16):
                  
         # Call super constructor
         super().__init__(context, \
             h0, hu0, hv0, \
             nx, ny, \
-            2, 2, \
+            1, 1, \
             dx, dy, dt, \
             g, \
             block_width, block_height);
-            
-        self.theta = np.float32(theta)
 
-        #Get kernels
-        self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
-                                        "iifffffiPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=block_width, \
-                                        BLOCK_HEIGHT=block_height)
+        # Get kernels
+        self.kernel = context.get_prepared_kernel("LxF_kernel.cu", "LxFKernel", \
+                                        "iiffffPiPiPiPiPiPi", \
+                                        BLOCK_WIDTH=self.local_size[0], \
+                                        BLOCK_HEIGHT=self.local_size[1])
         
     def __str__(self):
-        return "Kurganov-Petrova 2007"
-    
-    def simulate(self, t_end):
-        return super().simulateRK(t_end, 2)
+        return "Lax Friedrichs"
         
-    def substepRK(self, dt, substep):
+    def simulate(self, t_end):
+        return super().simulateEuler(t_end)
+        
+    def stepEuler(self, dt):
         self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
-                self.theta, \
-                np.int32(substep), \
-                self.data.h0.data.gpudata,  self.data.h0.pitch,  \
-                self.data.hu0.data.gpudata, self.data.hu0.pitch, \
-                self.data.hv0.data.gpudata, self.data.hv0.pitch, \
-                self.data.h1.data.gpudata,  self.data.h1.pitch,  \
-                self.data.hu1.data.gpudata, self.data.hu1.pitch, \
-                self.data.hv1.data.gpudata, self.data.hv1.pitch)
+                self.data.h0.data.gpudata, self.data.h0.data.strides[0], \
+                self.data.hu0.data.gpudata, self.data.hu0.data.strides[0], \
+                self.data.hv0.data.gpudata, self.data.hv0.data.strides[0], \
+                self.data.h1.data.gpudata, self.data.h1.data.strides[0], \
+                self.data.hu1.data.gpudata, self.data.hu1.data.strides[0], \
+                self.data.hv1.data.gpudata, self.data.hv1.data.strides[0])
         self.data.swap()
-        
-    def stepEuler(self, dt):
-        self.substepRK(dt, 0)
         self.t += dt
-        
-    def stepRK(self, dt, order):
-        if (order != 2):
-            raise NotImplementedError("Only second order implemented")
-        self.substepRK(dt, 0)
-        self.substepRK(dt, 1)
-        self.t += dt
-    
-    def download(self):
-        return self.data.download(self.stream)
+  
 
