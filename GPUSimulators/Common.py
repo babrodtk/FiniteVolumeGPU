@@ -100,7 +100,7 @@ class CudaContext(object):
             self.cache_path = os.path.join(self.module_path, "cuda_cache") 
             if not os.path.isdir(self.cache_path):
                 os.mkdir(self.cache_path)
-            self.logger.debug("Using CUDA cache dir %s", self.cache_path)
+            self.logger.info("Using CUDA cache dir %s", self.cache_path)
             
         self.autotuner = None
         if (autotuning):
@@ -395,6 +395,7 @@ class SWEDataArakawaA:
     Uploads initial data to the CL device
     """
     def __init__(self, stream, nx, ny, halo_x, halo_y, h0, hu0, hv0):
+        self.logger =  logging.getLogger(__name__)
         self.h0  = CudaArray2D(stream, nx, ny, halo_x, halo_y, h0)
         self.hu0 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hu0)
         self.hv0 = CudaArray2D(stream, nx, ny, halo_x, halo_y, hv0)

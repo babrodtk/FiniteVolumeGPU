@@ -69,6 +69,8 @@ class BaseSimulator:
         self.stream = cuda.Stream()
         
         #Create data by uploading to device
+        free, total = cuda.mem_get_info()
+        self.logger.debug("GPU memory: %d / %d MB available", int(free/(1024*1024)), int(total/(1024*1024)))
         self.data = Common.SWEDataArakawaA(self.stream, \
                             nx, ny, \
                             ghost_cells_x, ghost_cells_y, \

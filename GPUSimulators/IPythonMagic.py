@@ -31,33 +31,43 @@ from GPUSimulators import Common
 @magics_class
 class MyIPythonMagic(Magics): 
     @line_magic
-    def cuda_context_handler(self, context_name):
+    @magic_arguments.magic_arguments()
+    @magic_arguments.argument(
+        'name', type=str, help='Name of context to create')
+    @magic_arguments.argument(
+        '--blocking', '-b', action="store_true", help='Enable blocking context')
+    @magic_arguments.argument(
+        '--no_cache', '-nc', action="store_true", help='Disable caching of kernels')
+    @magic_arguments.argument(
+        '--no_autotuning', '-na', action="store_true", help='Disable autotuning of kernels')
+    def cuda_context_handler(self, line):
+        args = magic_arguments.parse_argstring(self.cuda_context_handler, line)
         self.logger =  logging.getLogger(__name__)
         
-        self.logger.debug("Registering %s as a global context", context_name)
+        self.logger.info("Registering %s in user workspace", args.name)
         
-        if context_name in self.shell.user_ns.keys():
+        if args.name in self.shell.user_ns.keys():
             self.logger.debug("Context already registered! Ignoring")
             return
         else:
             self.logger.debug("Creating context")
-            #self.shell.ex(context_name + " = Common.CudaContext(blocking=False)")
-            self.shell.user_ns[context_name] = Common.CudaContext(blocking=False)
+            use_cache = False if args.no_cache else True
+            use_autotuning = False if args.no_autotuning else True
+            self.shell.user_ns[args.name] = Common.CudaContext(blocking=args.blocking, use_cache=use_cache, autotuning=use_autotuning)
         
         # this function will be called on exceptions in any cell
         def custom_exc(shell, etype, evalue, tb, tb_offset=None):
-            self.logger.exception("Exception caught: Resetting to CUDA context %s", context_name)
+            self.logger.exception("Exception caught: Resetting to CUDA context %s", args.name)
             while (cuda.Context.get_current() != None):
                 context = cuda.Context.get_current()
                 self.logger.info("Popping <%s>", str(context.handle))
                 cuda.Context.pop()
 
-            if context_name in self.shell.user_ns.keys():
-                self.logger.info("Pushing <%s>", str(self.shell.user_ns[context_name].cuda_context.handle))
-                #self.shell.ex(context_name + ".cuda_context.push()")
-                self.shell.user_ns[context_name].cuda_context.push()
+            if args.name in self.shell.user_ns.keys():
+                self.logger.info("Pushing <%s>", str(self.shell.user_ns[args.name].cuda_context.handle))
+                self.shell.user_ns[args.name].cuda_context.push()
             else:
-                self.logger.error("No CUDA context called %s found (something is wrong)", context_name)
+                self.logger.error("No CUDA context called %s found (something is wrong)", args.name)
                 self.logger.error("CUDA will not work now")
 
             self.logger.debug("==================================================================")
