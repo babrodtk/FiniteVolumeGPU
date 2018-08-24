@@ -121,21 +121,19 @@ __global__ void HLLKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
-            
-    const int block_width = BLOCK_WIDTH;
-    const int block_height = BLOCK_HEIGHT;
     
     //Shared memory variables
-    __shared__ float Q[3][block_height+2][block_width+2];
-    __shared__ float F[3][block_height+1][block_width+1];
+    __shared__ float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
+    __shared__ float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
     
     
     //Read into shared memory
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(h0_ptr_, h0_pitch_, Q[0], nx_+1, ny_+1);
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hu0_ptr_, hu0_pitch_, Q[1], nx_+1, ny_+1);
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hv0_ptr_, hv0_pitch_, Q[2], nx_+1, ny_+1);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
     __syncthreads();
 
+    //Set boundary conditions
     noFlowBoundary1(Q, nx_, ny_);
     __syncthreads();
     
@@ -155,16 +153,10 @@ __global__ void HLLKernel(
     evolveG1(Q, F, nx_, ny_, dy_, dt_);
     __syncthreads();
     
-    
-    //Q[0][threadIdx.y + 1][threadIdx.x + 1] += 0.1;
-    
-    
-    
     // Write to main memory for all internal cells
-    writeBlock1(h1_ptr_, h1_pitch_,
-                hu1_ptr_, hu1_pitch_,
-                hv1_ptr_, hv1_pitch_,
-                Q, nx_, ny_);
+    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
+    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
+    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
 }
 
 } // extern "C"

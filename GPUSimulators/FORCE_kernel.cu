@@ -120,11 +120,10 @@ __global__ void FORCEKernel(
     
     
     //Read into shared memory
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(h0_ptr_, h0_pitch_, Q[0], nx_+1, ny_+1);
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hu0_ptr_, hu0_pitch_, Q[1], nx_+1, ny_+1);
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hv0_ptr_, hv0_pitch_, Q[2], nx_+1, ny_+1);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
     __syncthreads();
-        
     
     //Set boundary conditions
     noFlowBoundary1(Q, nx_, ny_);
@@ -147,10 +146,9 @@ __global__ void FORCEKernel(
     __syncthreads();
     
     //Write to main memory
-    writeBlock1(h1_ptr_, h1_pitch_,
-                hu1_ptr_, hu1_pitch_,
-                hv1_ptr_, hv1_pitch_,
-                Q, nx_, ny_);
+    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
+    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
+    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
 }
 
 } // extern "C"

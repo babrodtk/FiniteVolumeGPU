@@ -56,7 +56,7 @@ inline __device__ __host__ float clamp(const float f, const float a, const float
 template<int sm_width, int sm_height>
 __device__ void readBlock(float* ptr_, int pitch_,
                 float shmem[sm_height][sm_width], 
-                const int max_x, const int max_y) {
+                const int max_x_, const int max_y_) {
     
     //Index of block within domain
     const int bx = blockDim.x * blockIdx.x;
@@ -64,13 +64,13 @@ __device__ void readBlock(float* ptr_, int pitch_,
     
     //Read into shared memory
     for (int j=threadIdx.y; j<sm_height; j+=blockDim.y) {
-        const int l = clamp(by + j, 0, max_y); // Clamp out of bounds
+        const int l = clamp(by + j, 0, max_y_-1); // Clamp out of bounds
         
         //Compute the pointer to current row in the arrays
         const float* const row  = (float*) ((char*) ptr_  + pitch_*l);
         
         for (int i=threadIdx.x; i<sm_width; i+=blockDim.x) {
-            const int k = clamp(bx + i, 0, max_x); // clamp out of bounds
+            const int k = clamp(bx + i, 0, max_x_-1); // Clamp out of bounds
 
             shmem[j][i] = row[k];
         }
@@ -82,53 +82,30 @@ __device__ void readBlock(float* ptr_, int pitch_,
 
 
 /**
-  * Reads a block of data  with two ghost cells for the shallow water equations
-  */
-__device__ void readBlock2(float* h_ptr_, int h_pitch_,
-                float* hu_ptr_, int hu_pitch_,
-                float* hv_ptr_, int hv_pitch_,
-                float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
-                const int nx_, const int ny_) {
-    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(h_ptr_, h_pitch_, Q[0], nx_+3, ny_+3);
-    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(hu_ptr_, hu_pitch_, Q[1], nx_+3, ny_+3);
-    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(hv_ptr_, hv_pitch_, Q[2], nx_+3, ny_+3);
-}
-
-
-
-
-
-
-/**
   * Writes a block of data to global memory for the shallow water equations.
   */
-__device__ void writeBlock1(float* h_ptr_, int h_pitch_,
-                 float* hu_ptr_, int hu_pitch_,
-                 float* hv_ptr_, int hv_pitch_,
-                 float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                 const int nx_, const int ny_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
+template<int sm_width, int sm_height, int offset_x=0, int offset_y=0>
+__device__ void writeBlock(float* ptr_, int pitch_,
+                 float shmem[sm_height][sm_width],
+                 const int width, const int height) {
     
     //Index of cell within domain
-    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 1; //Skip global ghost cells, i.e., +1
-    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 1;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + offset_x;
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + offset_y;
     
     //Only write internal cells
-    if (ti > 0 && ti < nx_+1 && tj > 0 && tj < ny_+1) {
-        const int i = tx + 1; //Skip local ghost cells, i.e., +1
-        const int j = ty + 1;
-
-        float* const h_row  = (float*) ((char*) h_ptr_  + h_pitch_*tj);
-        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*tj);
-        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*tj);
+    if (ti < width+offset_x && tj < height+offset_y) {
+        //Index of thread within block
+        const int tx = threadIdx.x + offset_x;
+        const int ty = threadIdx.y + offset_y;
         
-        h_row[ti]  = Q[0][j][i];
-        hu_row[ti] = Q[1][j][i];
-        hv_row[ti] = Q[2][j][i];
+        float* const row  = (float*) ((char*) ptr_ + pitch_*tj);
+        row[ti] = shmem[ty][tx];
     }
 }
+
+
+
 
 
 
@@ -142,27 +119,9 @@ __device__ void writeBlock2(float* h_ptr_, int h_pitch_,
                  float* hv_ptr_, int hv_pitch_,
                  float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
                  const int nx_, const int ny_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    //Index of cell within domain
-    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 2; //Skip global ghost cells, i.e., +2
-    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 2;
-    
-    //Only write internal cells
-    if (ti > 1 && ti < nx_+2 && tj > 1 && tj < ny_+2) {
-        const int i = tx + 2; //Skip local ghost cells, i.e., +2
-        const int j = ty + 2;
-
-        float* const h_row  = (float*) ((char*) h_ptr_ + h_pitch_*tj);
-        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*tj);
-        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*tj);
-        
-        h_row[ti]  = Q[0][j][i];
-        hu_row[ti] = Q[1][j][i];
-        hv_row[ti] = Q[2][j][i];
-    }
+    writeBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4, 2, 2>( h_ptr_,  h_pitch_, Q[0], nx_, ny_);
+    writeBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4, 2, 2>(hu_ptr_, hu_pitch_, Q[1], nx_, ny_);
+    writeBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4, 2, 2>(hv_ptr_, hv_pitch_, Q[2], nx_, ny_);
 }
 
 
