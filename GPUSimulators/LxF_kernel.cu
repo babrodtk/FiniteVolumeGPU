@@ -127,10 +127,9 @@ void LxFKernel(
     __shared__ float G[3][block_height+1][block_width];
     
     //Read into shared memory
-    readBlock1(h0_ptr_, h0_pitch_,
-               hu0_ptr_, hu0_pitch_,
-               hv0_ptr_, hv0_pitch_,
-               Q, nx_, ny_);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(h0_ptr_, h0_pitch_, Q[0], nx_+1, ny_+1);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hu0_ptr_, hu0_pitch_, Q[1], nx_+1, ny_+1);
+    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hv0_ptr_, hv0_pitch_, Q[2], nx_+1, ny_+1);
     __syncthreads();
     
     //Set boundary conditions

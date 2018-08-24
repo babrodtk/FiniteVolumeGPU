@@ -141,10 +141,9 @@ __global__ void KP07Kernel(
     
     
     //Read into shared memory
-    readBlock2(h0_ptr_, h0_pitch_,
-               hu0_ptr_, hu0_pitch_,
-               hv0_ptr_, hv0_pitch_,
-               Q, nx_, ny_);
+    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(h0_ptr_, h0_pitch_, Q[0], nx_+3, ny_+3);
+    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(hu0_ptr_, hu0_pitch_, Q[1], nx_+3, ny_+3);
+    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(hv0_ptr_, hv0_pitch_, Q[2], nx_+3, ny_+3);
     __syncthreads();
     
     

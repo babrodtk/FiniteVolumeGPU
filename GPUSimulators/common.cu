@@ -50,38 +50,29 @@ inline __device__ __host__ float clamp(const float f, const float a, const float
 
 
 
-
 /**
   * Reads a block of data  with one ghost cell for the shallow water equations
   */
-__device__ void readBlock1(float* h_ptr_, int h_pitch_,
-                float* hu_ptr_, int hu_pitch_,
-                float* hv_ptr_, int hv_pitch_,
-                float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2], 
-                const int nx_, const int ny_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
+template<int sm_width, int sm_height>
+__device__ void readBlock(float* ptr_, int pitch_,
+                float shmem[sm_height][sm_width], 
+                const int max_x, const int max_y) {
     
     //Index of block within domain
-    const int bx = BLOCK_WIDTH * blockIdx.x;
-    const int by = BLOCK_HEIGHT * blockIdx.y;
+    const int bx = blockDim.x * blockIdx.x;
+    const int by = blockDim.y * blockIdx.y;
     
     //Read into shared memory
-    for (int j=ty; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
-        const int l = clamp(by + j, 0, ny_+1); // Out of bounds
+    for (int j=threadIdx.y; j<sm_height; j+=blockDim.y) {
+        const int l = clamp(by + j, 0, max_y); // Clamp out of bounds
         
         //Compute the pointer to current row in the arrays
-        float* const h_row  = (float*) ((char*) h_ptr_  + h_pitch_*l);
-        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
-        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
+        const float* const row  = (float*) ((char*) ptr_  + pitch_*l);
         
-        for (int i=tx; i<BLOCK_WIDTH+2; i+=BLOCK_WIDTH) {
-            const int k = clamp(bx + i, 0, nx_+1); // Out of bounds
-            
-            Q[0][j][i] = h_row[k];
-            Q[1][j][i] = hu_row[k];
-            Q[2][j][i] = hv_row[k];
+        for (int i=threadIdx.x; i<sm_width; i+=blockDim.x) {
+            const int k = clamp(bx + i, 0, max_x); // clamp out of bounds
+
+            shmem[j][i] = row[k];
         }
     }
 }
@@ -98,32 +89,12 @@ __device__ void readBlock2(float* h_ptr_, int h_pitch_,
                 float* hv_ptr_, int hv_pitch_,
                 float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
                 const int nx_, const int ny_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    //Index of block within domain
-    const int bx = BLOCK_WIDTH * blockIdx.x;
-    const int by = BLOCK_HEIGHT * blockIdx.y;
-    
-    //Read into shared memory
-    for (int j=ty; j<BLOCK_HEIGHT+4; j+=BLOCK_HEIGHT) {
-        const int l = clamp(by + j, 0, ny_+3); // Out of bounds
-        
-        //Compute the pointer to current row in the arrays
-        float* const h_row  = (float*) ((char*) h_ptr_  + h_pitch_*l);
-        float* const hu_row = (float*) ((char*) hu_ptr_ + hu_pitch_*l);
-        float* const hv_row = (float*) ((char*) hv_ptr_ + hv_pitch_*l);
-        
-        for (int i=tx; i<BLOCK_WIDTH+4; i+=BLOCK_WIDTH) {
-            const int k = clamp(bx + i, 0, nx_+3); // Out of bounds
-            
-            Q[0][j][i] = h_row[k];
-            Q[1][j][i] = hu_row[k];
-            Q[2][j][i] = hv_row[k];
-        }
-    }
+    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(h_ptr_, h_pitch_, Q[0], nx_+3, ny_+3);
+    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(hu_ptr_, hu_pitch_, Q[1], nx_+3, ny_+3);
+    readBlock<BLOCK_WIDTH+4, BLOCK_HEIGHT+4>(hv_ptr_, hv_pitch_, Q[2], nx_+3, ny_+3);
 }
+
+
 
 
 
