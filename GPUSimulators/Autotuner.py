@@ -34,8 +34,8 @@ from GPUSimulators import Common, Simulator
 class Autotuner:
     def __init__(self, 
                 nx=2048, ny=2048, 
-                block_widths=range(8, 32, 2),
-                block_heights=range(8, 32, 2)):
+                block_widths=range(8, 32, 1),
+                block_heights=range(8, 32, 1)):
         logger = logging.getLogger(__name__)
         self.filename = "autotuning_data_" + gethostname() + ".npz"
         self.nx = nx
@@ -239,19 +239,21 @@ class Autotuner:
         h  = np.zeros((ny, nx), dtype=np.float32); 
         hu = np.zeros((ny, nx), dtype=np.float32);
         hv = np.zeros((ny, nx), dtype=np.float32);
-        
-        x = dx*(np.arange(0, nx, dtype=np.float32)+0.5) - x_center
-        y = dy*(np.arange(0, ny, dtype=np.float32)+0.5) - y_center
+
+        extent = 1.0/np.sqrt(2.0)
+        x = (dx*(np.arange(0, nx, dtype=np.float32)+0.5) - x_center) / size
+        y = (dy*(np.arange(0, ny, dtype=np.float32)+0.5) - y_center) / size
         xv, yv = np.meshgrid(x, y, sparse=False, indexing='xy')
-        r = np.sqrt(xv**2 + yv**2)
+        r = np.minimum(1.0, np.sqrt(xv**2 + yv**2))
         xv = None
         yv = None
         gc.collect()
-            
+
         #Generate highres
-        h = 0.5 + 0.1*0.5*(1.0 + np.cos(np.pi*r/size)) * (r < size)
-        hu = 0.1*0.5*(1.0 + np.cos(np.pi*r/size)) * (r < size)
-        hv = 0.1*0.5*(1.0 + np.cos(np.pi*r/size)) * (r < size)
+        cos = np.cos(np.pi*r)
+        h = 0.5 + 0.1*0.5*(1.0 + cos)
+        hu = 0.1*0.5*(1.0 + cos)
+        hv = hu.copy()
         
         scale = 0.7
         max_h_estimate = 0.6

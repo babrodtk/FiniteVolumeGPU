@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "SWECommon.cu"
 #include "limiters.cu"
 #include "fluxes/CentralUpwind.cu"
 
@@ -35,8 +36,8 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     {
         int j=ty;
@@ -66,8 +67,8 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j + 1;
@@ -120,12 +121,12 @@ __global__ void KP07Kernel(
         float* hv1_ptr_, int hv1_pitch_) {
         
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
 
     //Index of cell within domain
-    const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
-    const int tj = get_global_id(1) + 2;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 2; //Skip global ghost cells, i.e., +2
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 2;
     
     //Shared memory variables
     __shared__ float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4];

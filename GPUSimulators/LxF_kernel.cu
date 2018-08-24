@@ -19,7 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "common.cu"
+#include "Common.cu"
+#include "SWECommon.cu"
 #include "fluxes/LaxFriedrichs.cu"
 
 
@@ -32,8 +33,8 @@ void computeFluxF(float Q[3][block_height+2][block_width+2],
                   float F[3][block_height][block_width+1],
                   const float g_, const float dx_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     {
         const int j=ty;
@@ -68,8 +69,8 @@ void computeFluxG(float Q[3][block_height+2][block_width+2],
                   float G[3][block_height+1][block_width],
                   const float g_, const float dy_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     for (int j=ty; j<block_height+1; j+=block_height) {
         const int l = j;
@@ -118,8 +119,8 @@ void LxFKernel(
     const int block_height = BLOCK_HEIGHT;
             
     //Index of cell within domain
-    const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
-    const int tj = get_global_id(1) + 1;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 1; //Skip global ghost cells, i.e., +1
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 1;
     
     __shared__ float Q[3][block_height+2][block_width+2];
     __shared__ float F[3][block_height][block_width+1];
@@ -146,8 +147,8 @@ void LxFKernel(
     //Evolve for all internal cells
     if (ti > 0 && ti < nx_+1 && tj > 0 && tj < ny_+1) {
         //Index of thread within block
-        const int tx = get_local_id(0);
-        const int ty = get_local_id(1);
+        const int tx = threadIdx.x;
+        const int ty = threadIdx.y;
         
         const int i = tx + 1; //Skip local ghost cells, i.e., +1
         const int j = ty + 1;

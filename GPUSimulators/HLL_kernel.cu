@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "SWECommon.cu"
 #include "fluxes/HartenLaxVanLeer.cu"
 
 
@@ -34,8 +35,8 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     {
         const int j=ty;
@@ -68,8 +69,8 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j;
@@ -156,7 +157,7 @@ __global__ void HLLKernel(
     __syncthreads();
     
     
-    //Q[0][get_local_id(1) + 1][get_local_id(0) + 1] += 0.1;
+    //Q[0][threadIdx.y + 1][threadIdx.x + 1] += 0.1;
     
     
     

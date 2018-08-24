@@ -50,8 +50,8 @@ __device__ void minmodSlopeX(float  Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   const float theta_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Reconstruct slopes along x axis
     {
@@ -74,8 +74,8 @@ __device__ void minmodSlopeY(float  Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float Qy[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   const float theta_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     for (int j=ty; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
         const int l = j + 1;

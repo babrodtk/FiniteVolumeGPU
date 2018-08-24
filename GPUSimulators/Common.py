@@ -289,8 +289,9 @@ class CudaContext(object):
 
 
 
+
 """
-Class that holds data 
+Class that holds 2D data 
 """
 class CudaArray2D:
     """
@@ -307,42 +308,41 @@ class CudaArray2D:
         ny_halo = ny + 2*y_halo
         
         #self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
+        #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
+        self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), dtype)
         
-        #Make sure data is in proper format
-        if cpu_data is not None:
-            assert cpu_data.itemsize == 4, "Wrong size of data type"
-            assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
-
-        #Upload data to the device
+        #If we don't have any data, just allocate and return
         if cpu_data is None:
-            self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), dtype)
-        elif (cpu_data.shape == (ny_halo, nx_halo)):
-            self.data = pycuda.gpuarray.to_gpu_async(cpu_data, stream=stream)
-        elif (cpu_data.shape == (self.ny, self.nx)):
-            #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
-            self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), dtype)
-            #self.data.fill(0.0)
+            return
             
-            #Create copy object from host to device
-            copy = cuda.Memcpy2D()
-            copy.set_src_host(cpu_data)
-            copy.set_dst_device(self.data.gpudata)
+        #Make sure data is in proper format
+        assert cpu_data.shape == (ny_halo, nx_halo) or cpu_data.shape == (self.ny, self.nx), "Wrong shape of data %s vs %s / %s" % (str(cpu_data.shape), str((self.ny, self.nx)), str((ny_halo, nx_halo)))
+        assert cpu_data.itemsize == 4, "Wrong size of data type"
+        assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
+
+        #Create copy object from host to device
+        copy = cuda.Memcpy2D()
+        copy.set_src_host(cpu_data)
+        copy.set_dst_device(self.data.gpudata)
             
-            #Set offsets and pitch of destination
-            copy.dst_x_in_bytes = self.x_halo*self.data.strides[1]
-            copy.dst_y = self.y_halo
-            copy.dst_pitch = self.data.strides[0]
-            
-            #Set width in bytes to copy for each row and
-            #number of rows to copy
-            copy.width_in_bytes = self.nx*cpu_data.itemsize
-            copy.height = self.ny
-            
-            #Perform the copy
-            copy(stream)
-            stream.synchronize()
-        else:
-            assert False, "Wrong data shape: %s vs %s / %s" % (str(cpu_data.shape), str((self.ny, self.nx)), str((ny_halo, nx_halo)))
+        #Set offsets of upload in destination
+        x_offset = (nx_halo - cpu_data.shape[1]) // 2
+        y_offset = (ny_halo - cpu_data.shape[0]) // 2
+        copy.dst_x_in_bytes = x_offset*self.data.strides[1]
+        copy.dst_y = y_offset
+        
+        #Set destination pitch
+        copy.dst_pitch = self.data.strides[0]
+        
+        #Set width in bytes to copy for each row and
+        #number of rows to copy
+        width = max(self.nx, cpu_data.shape[1])
+        height = max(self.ny, cpu_data.shape[0])
+        copy.width_in_bytes = width*cpu_data.itemsize
+        copy.height = height
+        
+        #Perform the copy
+        copy(stream)
         
         #self.logger.debug("Buffer <%s> [%dx%d]: Allocated ", int(self.data.gpudata), self.nx, self.ny)
         
@@ -375,6 +375,114 @@ class CudaArray2D:
         #number of rows to copy
         copy.width_in_bytes = self.nx*cpu_data.itemsize
         copy.height = self.ny
+        
+        copy(stream)
+        if async==False:
+            stream.synchronize()
+        
+        return cpu_data
+
+        
+        
+        
+        
+        
+        
+        
+"""
+Class that holds 2D data 
+"""
+class CudaArray3D:
+    """
+    Uploads initial data to the CL device
+    """
+    def __init__(self, stream, nx, ny, nz, x_halo, y_halo, z_halo, cpu_data=None, dtype=np.float32):
+        self.logger =  logging.getLogger(__name__)
+        self.nx = nx
+        self.ny = ny
+        self.nz = nz
+        self.x_halo = x_halo
+        self.y_halo = y_halo
+        self.z_halo = z_halo
+        
+        nx_halo = nx + 2*x_halo
+        ny_halo = ny + 2*y_halo
+        nz_halo = nz + 2*z_halo
+        
+        #self.logger.debug("Allocating [%dx%dx%d] buffer", self.nx, self.ny, self.nz)
+        #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
+        self.data = pycuda.gpuarray.empty((nz_halo, ny_halo, nx_halo), dtype)
+        
+        #If we don't have any data, just allocate and return
+        if cpu_data is None:
+            return
+            
+        #Make sure data is in proper format
+        assert cpu_data.shape == (nz_halo, ny_halo, nx_halo) or cpu_data.shape == (self.nz, self.ny, self.nx), "Wrong shape of data %s vs %s / %s" % (str(cpu_data.shape), str((self.nz, self.ny, self.nx)), str((nz_halo, ny_halo, nx_halo)))
+        assert cpu_data.itemsize == 4, "Wrong size of data type"
+        assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
+            
+        #Create copy object from host to device
+        copy = cuda.Memcpy3D()
+        copy.set_src_host(cpu_data)
+        copy.set_dst_device(self.data.gpudata)
+        
+        #Set offsets of destination
+        x_offset = (nx_halo - cpu_data.shape[2]) // 2
+        y_offset = (ny_halo - cpu_data.shape[1]) // 2
+        z_offset = (nz_halo - cpu_data.shape[0]) // 2
+        copy.dst_x_in_bytes = x_offset*self.data.strides[1]
+        copy.dst_y = y_offset
+        copy.dst_z = z_offset
+        
+        #Set pitch of destination
+        copy.dst_pitch = self.data.strides[0]
+        
+        #Set width in bytes to copy for each row and
+        #number of rows to copy
+        width = max(self.nx, cpu_data.shape[2])
+        height = max(self.ny, cpu_data.shape[1])
+        depth = max(self.nz, cpu-data.shape[0])
+        copy.width_in_bytes = width*cpu_data.itemsize
+        copy.height = height
+        copy.depth = depth
+        
+        #Perform the copy
+        copy(stream)
+        
+        #self.logger.debug("Buffer <%s> [%dx%d]: Allocated ", int(self.data.gpudata), self.nx, self.ny)
+        
+        
+    def __del__(self, *args):
+        #self.logger.debug("Buffer <%s> [%dx%d]: Releasing ", int(self.data.gpudata), self.nx, self.ny)
+        self.data.gpudata.free()
+        self.data = None
+        
+    """
+    Enables downloading data from GPU to Python
+    """
+    def download(self, stream, async=False):
+        #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
+        #Allocate host memory
+        #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
+        cpu_data = np.empty((self.nz, self.ny, self.nx), dtype=np.float32)
+        
+        #Create copy object from device to host
+        copy = cuda.Memcpy2D()
+        copy.set_src_device(self.data.gpudata)
+        copy.set_dst_host(cpu_data)
+        
+        #Set offsets and pitch of source
+        copy.src_x_in_bytes = self.x_halo*self.data.strides[1]
+        copy.src_y = self.y_halo
+        copy.src_z = self.z_halo
+        copy.src_pitch = self.data.strides[0]
+        
+        #Set width in bytes to copy for each row and
+        #number of rows to copy
+        copy.width_in_bytes = self.nx*cpu_data.itemsize
+        copy.height = self.ny
+        copy.depth = self.nz
         
         copy(stream)
         if async==False:

@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 #include "common.cu"
+#include "SWECommon.cu"
 #include "fluxes/WeightedAverageFlux.cu"
 
 
@@ -37,8 +38,8 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_, const float dx_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
                       
     {
         int j=ty; 
@@ -76,8 +77,8 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
                   const float g_, const float dy_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Compute fluxes along the y axis
     for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {

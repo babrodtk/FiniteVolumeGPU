@@ -23,43 +23,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-/**
-  * Location of thread in block
-  */
-inline __device__ int get_local_id(int dim) {
-    switch(dim) {
-        case 0: return threadIdx.x; 
-        case 1: return threadIdx.y;
-        case 2: return threadIdx.z;
-        default: return -1;
-    }
-}
-
-
-/**
-  * Get block index
-  */
-__device__ int get_group_id(int dim) {
-    switch(dim) {
-        case 0: return blockIdx.x;
-        case 1: return blockIdx.y;
-        case 2: return blockIdx.z;
-        default: return -1;
-    }
-}
-
-/**
-  * Location of thread in global domain
-  */
-__device__ int get_global_id(int dim) {
-    switch(dim) {
-        case 0: return blockDim.x*blockIdx.x + threadIdx.x;
-        case 1: return blockDim.y*blockIdx.y + threadIdx.y;
-        case 2: return blockDim.z*blockIdx.z + threadIdx.z;
-        default: return -1;
-    }
-}
-
 
 /**
   * Float3 operators 
@@ -97,12 +60,12 @@ __device__ void readBlock1(float* h_ptr_, int h_pitch_,
                 float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2], 
                 const int nx_, const int ny_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of block within domain
-    const int bx = BLOCK_WIDTH * get_group_id(0);
-    const int by = BLOCK_HEIGHT * get_group_id(1);
+    const int bx = BLOCK_WIDTH * blockIdx.x;
+    const int by = BLOCK_HEIGHT * blockIdx.y;
     
     //Read into shared memory
     for (int j=ty; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
@@ -136,12 +99,12 @@ __device__ void readBlock2(float* h_ptr_, int h_pitch_,
                 float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
                 const int nx_, const int ny_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of block within domain
-    const int bx = BLOCK_WIDTH * get_group_id(0);
-    const int by = BLOCK_HEIGHT * get_group_id(1);
+    const int bx = BLOCK_WIDTH * blockIdx.x;
+    const int by = BLOCK_HEIGHT * blockIdx.y;
     
     //Read into shared memory
     for (int j=ty; j<BLOCK_HEIGHT+4; j+=BLOCK_HEIGHT) {
@@ -174,12 +137,12 @@ __device__ void writeBlock1(float* h_ptr_, int h_pitch_,
                  float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                  const int nx_, const int ny_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of cell within domain
-    const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
-    const int tj = get_global_id(1) + 1;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 1; //Skip global ghost cells, i.e., +1
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 1;
     
     //Only write internal cells
     if (ti > 0 && ti < nx_+1 && tj > 0 && tj < ny_+1) {
@@ -209,12 +172,12 @@ __device__ void writeBlock2(float* h_ptr_, int h_pitch_,
                  float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], 
                  const int nx_, const int ny_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of cell within domain
-    const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
-    const int tj = get_global_id(1) + 2;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 2; //Skip global ghost cells, i.e., +2
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 2;
     
     //Only write internal cells
     if (ti > 1 && ti < nx_+2 && tj > 1 && tj < ny_+2) {
@@ -242,12 +205,12 @@ __device__ void writeBlock2(float* h_ptr_, int h_pitch_,
   */
 __device__ void noFlowBoundary1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2], const int nx_, const int ny_) {
     //Global index
-    const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
-    const int tj = get_global_id(1) + 1;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 1; //Skip global ghost cells, i.e., +1
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 1;
     
     //Block-local indices
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     const int i = tx + 1; //Skip local ghost cells, i.e., +1
     const int j = ty + 1;
@@ -286,12 +249,12 @@ __device__ void noFlowBoundary1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2], const
   */
 __device__ void noFlowBoundary2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4], const int nx_, const int ny_) {
     //Global index
-    const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
-    const int tj = get_global_id(1) + 2;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 2; //Skip global ghost cells, i.e., +2
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 2;
     
     //Block-local indices
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     const int i = tx + 2; //Skip local ghost cells, i.e., +2
     const int j = ty + 2;
@@ -347,12 +310,12 @@ __device__ void evolveF1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
               const int nx_, const int ny_,
               const float dx_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of cell within domain
-    const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
-    const int tj = get_global_id(1) + 1;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 1; //Skip global ghost cells, i.e., +1
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 1;
     
     if (ti > 0 && ti < nx_+1 && tj > 0 && tj < ny_+1) {
         const int i = tx + 1; //Skip local ghost cells, i.e., +1
@@ -377,12 +340,12 @@ __device__ void evolveF2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
               const int nx_, const int ny_,
               const float dx_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of cell within domain
-    const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
-    const int tj = get_global_id(1) + 2;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 2; //Skip global ghost cells, i.e., +2
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 2;
     
     if (ti > 1 && ti < nx_+2 && tj > 1 && tj < ny_+2) {
         const int i = tx + 2; //Skip local ghost cells, i.e., +1
@@ -407,12 +370,12 @@ __device__ void evolveG1(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
               const int nx_, const int ny_,
               const float dy_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of cell within domain
-    const int ti = get_global_id(0) + 1; //Skip global ghost cells, i.e., +1
-    const int tj = get_global_id(1) + 1;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 1; //Skip global ghost cells, i.e., +1
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 1;
     
     if (ti > 0 && ti < nx_+1 && tj > 0 && tj < ny_+1) {
         const int i = tx + 1; //Skip local ghost cells, i.e., +1
@@ -438,12 +401,12 @@ __device__ void evolveG2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
               const int nx_, const int ny_,
               const float dy_, const float dt_) {
     //Index of thread within block
-    const int tx = get_local_id(0);
-    const int ty = get_local_id(1);
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     
     //Index of cell within domain
-    const int ti = get_global_id(0) + 2; //Skip global ghost cells, i.e., +2
-    const int tj = get_global_id(1) + 2;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + 2; //Skip global ghost cells, i.e., +2
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + 2;
     
     if (ti > 1 && ti < nx_+2 && tj > 1 && tj < ny_+2) {
         const int i = tx + 2; //Skip local ghost cells, i.e., +2
@@ -456,23 +419,6 @@ __device__ void evolveG2(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
 }
 
 
-
-
-
-
-
-
-
-
-__device__ float3 F_func(const float3 Q, const float g) {
-    float3 F;
-
-    F.x = Q.y;                              //hu
-    F.y = Q.y*Q.y / Q.x + 0.5f*g*Q.x*Q.x;   //hu*hu/h + 0.5f*g*h*h;
-    F.z = Q.y*Q.z / Q.x;                    //hu*hv/h;
-
-    return F;
-}
 
 
 
