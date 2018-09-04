@@ -120,9 +120,9 @@ __global__ void FORCEKernel(
     
     
     //Read into shared memory
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
-    readBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
+    float* Q_ptr[3] = {h0_ptr_, hu0_ptr_, hv0_ptr_};
+    int Q_pitch[3] = {h0_pitch_, hu0_pitch_, hv0_pitch_};
+    readBlock<3, BLOCK_WIDTH+2, BLOCK_HEIGHT+2, BLOCK_WIDTH, BLOCK_HEIGHT>(Q_ptr, Q_pitch, Q, nx_+2, ny_+2);
     __syncthreads();
     
     //Set boundary conditions

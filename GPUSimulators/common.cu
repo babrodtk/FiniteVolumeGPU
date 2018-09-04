@@ -53,9 +53,9 @@ inline __device__ __host__ float clamp(const float f, const float a, const float
 /**
   * Reads a block of data  with one ghost cell for the shallow water equations
   */
-template<int sm_width, int sm_height>
-__device__ void readBlock(float* ptr_, int pitch_,
-                float shmem[sm_height][sm_width], 
+template<int sm_width, int sm_height, int block_width, int block_height>
+inline __device__ void readBlock(float* ptr_, int pitch_,
+                float (&shmem)[sm_height][sm_width], 
                 const int max_x_, const int max_y_) {
     
     //Index of block within domain
@@ -63,16 +63,50 @@ __device__ void readBlock(float* ptr_, int pitch_,
     const int by = blockDim.y * blockIdx.y;
     
     //Read into shared memory
-    for (int j=threadIdx.y; j<sm_height; j+=blockDim.y) {
+    for (int j=threadIdx.y; j<sm_height; j+=block_height) {
         const int l = clamp(by + j, 0, max_y_-1); // Clamp out of bounds
         
         //Compute the pointer to current row in the arrays
         const float* const row  = (float*) ((char*) ptr_  + pitch_*l);
         
-        for (int i=threadIdx.x; i<sm_width; i+=blockDim.x) {
+        for (int i=threadIdx.x; i<sm_width; i+=block_width) {
             const int k = clamp(bx + i, 0, max_x_-1); // Clamp out of bounds
 
             shmem[j][i] = row[k];
+        }
+    }
+}
+
+
+/**
+  * Reads a block of data with ghost cells
+  */
+template<int vars, int sm_width, int sm_height, int block_width, int block_height>
+inline __device__ void readBlock(float* ptr_[vars], int pitch_[vars],
+                float shmem[vars][sm_height][sm_width], 
+                const int max_x_, const int max_y_) {
+    
+    //Index of block within domain
+    const int bx = blockDim.x * blockIdx.x;
+    const int by = blockDim.y * blockIdx.y;
+    
+    float* rows[3];
+    
+    //Read into shared memory
+    for (int j=threadIdx.y; j<sm_height; j+=block_height) {
+        const int l = clamp(by + j, 0, max_y_-1); // Clamp out of bounds
+        
+        //Compute the pointer to current row in the arrays
+        for (int m=0; m<vars; ++m) {
+            rows[m] = (float*) ((char*) ptr_[m]  + pitch_[m]*l);
+        }
+        
+        for (int i=threadIdx.x; i<sm_width; i+=block_width) {
+            const int k = clamp(bx + i, 0, max_x_-1); // Clamp out of bounds
+
+            for (int m=0; m<vars; ++m) {
+                shmem[m][j][i] = rows[m][k];
+            }
         }
     }
 }
@@ -85,7 +119,7 @@ __device__ void readBlock(float* ptr_, int pitch_,
   * Writes a block of data to global memory for the shallow water equations.
   */
 template<int sm_width, int sm_height, int offset_x=0, int offset_y=0>
-__device__ void writeBlock(float* ptr_, int pitch_,
+inline __device__ void writeBlock(float* ptr_, int pitch_,
                  float shmem[sm_height][sm_width],
                  const int width, const int height) {
     
