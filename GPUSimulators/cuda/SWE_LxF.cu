@@ -19,9 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "Common.cu"
-#include "SWECommon.cu"
-#include "fluxes/LaxFriedrichs.cu"
+#include "common.h"
+#include "SWECommon.h"
 
 
 /**

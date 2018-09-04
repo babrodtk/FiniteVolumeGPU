@@ -1,5 +1,10 @@
 /*
-This OpenCL kernel implements the second order HLL flux
+This OpenCL kernel implements the Kurganov-Petrova numerical scheme 
+for the shallow water equations, described in 
+A. Kurganov & Guergana Petrova
+A Second-Order Well-Balanced Positivity Preserving Central-Upwind
+Scheme for the Saint-Venant System Communications in Mathematical
+Sciences, 5 (2007), 133-160. 
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -18,20 +23,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "common.cu"
-#include "SWECommon.cu"
-#include "limiters.cu"
-#include "fluxes/HartenLaxVanLeer.cu"
+
+#include "common.h"
+#include "SWECommon.h"
+#include "limiters.h"
 
 
-
-
-
-
-
-/**
-  * Computes the flux along the x axis for all faces
-  */
 __device__
 void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
@@ -42,7 +39,7 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
     const int ty = threadIdx.y;
     
     {
-        const int j=ty;
+        int j=ty;
         const int l = j + 2; //Skip ghost cells
         for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
             const int k = i + 1;
@@ -61,29 +58,22 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
             const float3 Q_lr = make_float3(Q[0][l][k] + 0.5f*Qx[0][j][i],
                                             Q[1][l][k] + 0.5f*Qx[1][j][i],
                                             Q[2][l][k] + 0.5f*Qx[2][j][i]);
-                                        
+                                    
             //Evolve half a timestep (predictor step)
             const float3 Q_r_bar = Q_rl + dt_/(2.0f*dx_) * (F_func(Q_rl, g_) - F_func(Q_rr, g_));
             const float3 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, g_) - F_func(Q_lr, g_));
 
             // Compute flux based on prediction
-            const float3 flux = HLL_flux(Q_l_bar, Q_r_bar, g_);
+            const float3 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, g_);
             
             //Write to shared memory
             F[0][j][i] = flux.x;
             F[1][j][i] = flux.y;
             F[2][j][i] = flux.z;
         }
-    }
+    }    
 }
 
-
-
-
-
-/**
-  * Computes the flux along the x axis for all faces
-  */
 __device__
 void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   float Qy[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
@@ -95,7 +85,7 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
     
     for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j + 1;
-        { 
+        {
             int i=tx;
             const int k = i + 2; //Skip ghost cells
             // Reconstruct point values of Q at the left and right hand side 
@@ -120,7 +110,7 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
             const float3 Q_l_bar = Q_lr + dt_/(2.0f*dy_) * (F_func(Q_ll, g_) - F_func(Q_lr, g_));
             
             // Compute flux based on prediction
-            const float3 flux = HLL_flux(Q_l_bar, Q_r_bar, g_);
+            const float3 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, g_);
             
             //Write to shared memory
             //Note that we here swap hu and hv back to the original
@@ -134,11 +124,11 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
 
 
 
-
-
-
+/**
+  * This unsplit kernel computes the 2D numerical scheme with a TVD RK2 time integration scheme
+  */
 extern "C" {
-__global__ void HLL2Kernel(
+__global__ void KP07DimsplitKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_,
@@ -156,12 +146,12 @@ __global__ void HLL2Kernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
-            
+        
+        
     //Shared memory variables
     __shared__ float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4];
     __shared__ float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
     __shared__ float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
-    
     
     
     
@@ -171,9 +161,12 @@ __global__ void HLL2Kernel(
     readBlock<3, BLOCK_WIDTH+4, BLOCK_HEIGHT+4, BLOCK_WIDTH, BLOCK_HEIGHT>(Q_ptr, Q_pitch, Q, nx_+4, ny_+4);
     __syncthreads();
     
-    //Set boundary conditions
+    
+    //Fix boundary conditions
     noFlowBoundary2(Q, nx_, ny_);
     __syncthreads();
+    
+    
     
     //Step 0 => evolve x first, then y
     if (step_ == 0) {
@@ -219,8 +212,6 @@ __global__ void HLL2Kernel(
         evolveF2(Q, F, nx_, ny_, dx_, dt_);
         __syncthreads();
     }
-    
-    
     
     
     // Write to main memory for all internal cells

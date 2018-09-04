@@ -61,7 +61,7 @@ class HLL (Simulator.BaseSimulator):
             block_width, block_height);
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("HLL_kernel.cu", "HLLKernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE_HLL.cu", "HLLKernel", \
                                         "iiffffPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=self.local_size[0], \
                                         BLOCK_HEIGHT=self.local_size[1])

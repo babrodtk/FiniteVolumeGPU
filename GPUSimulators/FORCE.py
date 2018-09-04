@@ -66,7 +66,7 @@ class FORCE (Simulator.BaseSimulator):
             block_width, block_height);
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("FORCE_kernel.cu", "FORCEKernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE_FORCE.cu", "FORCEKernel", \
                                         "iiffffPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=self.local_size[0], \
                                         BLOCK_HEIGHT=self.local_size[1])

@@ -22,6 +22,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#pragma once
 
 
 /**
@@ -50,32 +51,15 @@ inline __device__ __host__ float clamp(const float f, const float a, const float
 
 
 
-/**
-  * Reads a block of data  with one ghost cell for the shallow water equations
-  */
-template<int sm_width, int sm_height, int block_width, int block_height>
-inline __device__ void readBlock(float* ptr_, int pitch_,
-                float (&shmem)[sm_height][sm_width], 
-                const int max_x_, const int max_y_) {
-    
-    //Index of block within domain
-    const int bx = blockDim.x * blockIdx.x;
-    const int by = blockDim.y * blockIdx.y;
-    
-    //Read into shared memory
-    for (int j=threadIdx.y; j<sm_height; j+=block_height) {
-        const int l = clamp(by + j, 0, max_y_-1); // Clamp out of bounds
-        
-        //Compute the pointer to current row in the arrays
-        const float* const row  = (float*) ((char*) ptr_  + pitch_*l);
-        
-        for (int i=threadIdx.x; i<sm_width; i+=block_width) {
-            const int k = clamp(bx + i, 0, max_x_-1); // Clamp out of bounds
 
-            shmem[j][i] = row[k];
-        }
-    }
+__device__ float desingularize(float x_, float eps_) {
+    return copysign(1.0f, x_)*fmaxf(fabsf(x_), fminf(x_*x_/(2.0f*eps_)+0.5f*eps_, eps_));
 }
+
+
+
+
+
 
 
 /**

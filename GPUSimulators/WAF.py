@@ -61,7 +61,7 @@ class WAF (Simulator.BaseSimulator):
             block_width, block_height);
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("WAF_kernel.cu", "WAFKernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE_WAF.cu", "WAFKernel", \
                                         "iiffffiPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=self.local_size[0], \
                                         BLOCK_HEIGHT=self.local_size[1])

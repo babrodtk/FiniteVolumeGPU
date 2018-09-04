@@ -22,45 +22,38 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#pragma once
 
 
 
 
 
 
+__device__ float pressure(float4 Q, float gamma) {
+    const float rho   = Q.x;
+    const float rho_u = Q.y;
+    const float rho_v = Q.z;
+    const float E     = Q.w;
 
-
-__device__ float3 F_func(const float3 Q, const float g) {
-    float3 F;
-
-    F.x = Q.y;                              //hu
-    F.y = Q.y*Q.y / Q.x + 0.5f*g*Q.x*Q.x;   //hu*hu/h + 0.5f*g*h*h;
-    F.z = Q.y*Q.z / Q.x;                    //hu*hv/h;
-
-    return F;
+    return (gamma-1.0f)*(E-0.5f*(rho_u*rho_u + rho_v*rho_v)/rho);
 }
 
 
+__device__ float4 F_func(const float4 Q, float gamma) {
+    const float rho   = Q.x;
+    const float rho_u = Q.y;
+    const float rho_v = Q.z;
+    const float E     = Q.w;
 
+    const float u = rho_u/rho;
+    const float P = pressure(Q, gamma);
 
+    float4 F;
 
+    F.x = rho_u;
+    F.y = rho_u*u + P;
+    F.z = rho_v*u;
+    F.w = u*(E+P);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return F;
+}

@@ -25,7 +25,7 @@ from IPython.core import magic_arguments
 from IPython.core.magic import line_magic, Magics, magics_class
 import pycuda.driver as cuda
 
-from GPUSimulators import Common
+from GPUSimulators import Common, CudaContext
 
 
 @magics_class
@@ -53,7 +53,7 @@ class MyIPythonMagic(Magics):
             self.logger.debug("Creating context")
             use_cache = False if args.no_cache else True
             use_autotuning = False if args.no_autotuning else True
-            self.shell.user_ns[args.name] = Common.CudaContext(blocking=args.blocking, use_cache=use_cache, autotuning=use_autotuning)
+            self.shell.user_ns[args.name] = CudaContext.CudaContext(blocking=args.blocking, use_cache=use_cache, autotuning=use_autotuning)
         
         # this function will be called on exceptions in any cell
         def custom_exc(shell, etype, evalue, tb, tb_offset=None):

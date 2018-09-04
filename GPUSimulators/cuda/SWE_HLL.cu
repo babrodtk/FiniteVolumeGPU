@@ -1,6 +1,5 @@
 /*
-This OpenCL kernel implements the classical Lax-Friedrichs scheme
-for the shallow water equations, with edge fluxes.
+This GPU kernel implements the HLL flux
 
 Copyright (C) 2016  SINTEF ICT
 
@@ -19,40 +18,37 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "common.cu"
-#include "SWECommon.cu"
-#include "fluxes/FirstOrderCentered.cu"
+
+#include "common.h"
+#include "SWECommon.h"
+
+
+
 
 
 /**
   * Computes the flux along the x axis for all faces
   */
-__device__ 
+__device__
 void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
-                  const float g_, const float dx_, const float dt_) {
-                      
+                  const float g_) {
     //Index of thread within block
     const int tx = threadIdx.x;
     const int ty = threadIdx.y;
     
-    //Compute fluxes along the x axis
     {
-        int j=ty;
-        const int l = j + 1; //Skip ghost cells
-        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
+        const int j=ty;
+        const int l = j + 1; //Skip ghost cells     
+        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) { 
             const int k = i;
             
-            // Q at interface from the right and left
-            const float3 Qp = make_float3(Q[0][l][k+1],
-                                          Q[1][l][k+1],
-                                          Q[2][l][k+1]);
-            const float3 Qm = make_float3(Q[0][l][k],
-                                          Q[1][l][k],
-                                          Q[2][l][k]);
-                                       
-            // Computed flux
-            const float3 flux = FORCE_1D_flux(Qm, Qp, g_, dx_, dt_);
+            const float3 Q_l  = make_float3(Q[0][l][k  ], Q[1][l][k  ], Q[2][l][k  ]);
+            const float3 Q_r  = make_float3(Q[0][l][k+1], Q[1][l][k+1], Q[2][l][k+1]);
+            
+            const float3 flux = HLL_flux(Q_l, Q_r, g_);
+            
+            //Write to shared memory
             F[0][j][i] = flux.x;
             F[1][j][i] = flux.y;
             F[2][j][i] = flux.z;
@@ -61,36 +57,35 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
 }
 
 
+
+
+
 /**
   * Computes the flux along the y axis for all faces
   */
-__device__ 
+__device__
 void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
-                  const float g_, const float dy_, const float dt_) {
+                  const float g_) {
     //Index of thread within block
     const int tx = threadIdx.x;
     const int ty = threadIdx.y;
     
-    //Compute fluxes along the y axis
     for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
         const int l = j;
         {
-            int i=tx;
+            const int i=tx;
             const int k = i + 1; //Skip ghost cells
             
-            // Q at interface from the right and left
-            // Note that we swap hu and hv
-            const float3 Qp = make_float3(Q[0][l+1][k],
-                                          Q[2][l+1][k],
-                                          Q[1][l+1][k]);
-            const float3 Qm = make_float3(Q[0][l][k],
-                                          Q[2][l][k],
-                                          Q[1][l][k]);
-
+            //NOte that hu and hv are swapped ("transposing" the domain)!
+            const float3 Q_l = make_float3(Q[0][l  ][k], Q[2][l  ][k], Q[1][l  ][k]);
+            const float3 Q_r = make_float3(Q[0][l+1][k], Q[2][l+1][k], Q[1][l+1][k]);
+                                       
             // Computed flux
-            // Note that we swap back
-            const float3 flux = FORCE_1D_flux(Qm, Qp, g_, dy_, dt_);
+            const float3 flux = HLL_flux(Q_l, Q_r, g_);
+            
+            //Write to shared memory
+            //Note that we here swap hu and hv back to the original
             G[0][j][i] = flux.x;
             G[1][j][i] = flux.z;
             G[2][j][i] = flux.y;
@@ -99,8 +94,19 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
 }
 
 
+
+
+
+
+
+
+
+
+
+
 extern "C" {
-__global__ void FORCEKernel(
+    
+__global__ void HLLKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
         float g_,
@@ -115,6 +121,7 @@ __global__ void FORCEKernel(
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
     
+    //Shared memory variables
     __shared__ float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
     __shared__ float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
     
@@ -124,13 +131,13 @@ __global__ void FORCEKernel(
     int Q_pitch[3] = {h0_pitch_, hu0_pitch_, hv0_pitch_};
     readBlock<3, BLOCK_WIDTH+2, BLOCK_HEIGHT+2, BLOCK_WIDTH, BLOCK_HEIGHT>(Q_ptr, Q_pitch, Q, nx_+2, ny_+2);
     __syncthreads();
-    
+
     //Set boundary conditions
     noFlowBoundary1(Q, nx_, ny_);
     __syncthreads();
     
-    //Compute flux along x, and evolve
-    computeFluxF(Q, F, g_, dx_, dt_);
+    //Compute F flux
+    computeFluxF(Q, F, g_);
     __syncthreads();
     evolveF1(Q, F, nx_, ny_, dx_, dt_);
     __syncthreads();
@@ -139,13 +146,13 @@ __global__ void FORCEKernel(
     noFlowBoundary1(Q, nx_, ny_);
     __syncthreads();
     
-    //Compute flux along y, and evolve
-    computeFluxG(Q, F, g_, dy_, dt_);
+    //Compute G flux
+    computeFluxG(Q, F, g_);
     __syncthreads();
     evolveG1(Q, F, nx_, ny_, dy_, dt_);
     __syncthreads();
     
-    //Write to main memory
+    // Write to main memory for all internal cells
     writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
     writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
     writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);

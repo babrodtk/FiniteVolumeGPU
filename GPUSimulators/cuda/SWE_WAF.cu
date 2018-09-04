@@ -24,9 +24,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 
-#include "common.cu"
-#include "SWECommon.cu"
-#include "fluxes/WeightedAverageFlux.cu"
+#include "common.h"
+#include "SWECommon.h"
 
 
 

@@ -68,7 +68,7 @@ class KP07 (Simulator.BaseSimulator):
         self.theta = np.float32(theta)
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE_KP07.cu", "KP07Kernel", \
                                         "iifffffiPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=self.local_size[0], \
                                         BLOCK_HEIGHT=self.local_size[1])

@@ -67,7 +67,7 @@ class HLL2 (Simulator.BaseSimulator):
         self.theta = np.float32(theta)
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("HLL2_kernel.cu", "HLL2Kernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE_HLL2.cu", "HLL2Kernel", \
                                         "iifffffiPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=self.local_size[0], \
                                         BLOCK_HEIGHT=self.local_size[1])

@@ -21,7 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
-from GPUSimulators import Simulator, Common
+from GPUSimulators import Simulator, Common, CudaContext
 
 
 
@@ -62,7 +62,7 @@ class LxF (Simulator.BaseSimulator):
             block_width, block_height);
 
         # Get kernels
-        self.kernel = context.get_prepared_kernel("LxF_kernel.cu", "LxFKernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE_LxF.cu", "LxFKernel", \
                                         "iiffffPiPiPiPiPiPi", \
                                         BLOCK_WIDTH=self.local_size[0], \
                                         BLOCK_HEIGHT=self.local_size[1])
