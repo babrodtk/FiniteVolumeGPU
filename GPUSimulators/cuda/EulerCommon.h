@@ -1,12 +1,8 @@
 /*
-This OpenCL kernel implements the Kurganov-Petrova numerical scheme 
-for the shallow water equations, described in 
-A. Kurganov & Guergana Petrova
-A Second-Order Well-Balanced Positivity Preserving Central-Upwind
-Scheme for the Saint-Venant System Communications in Mathematical
-Sciences, 5 (2007), 133-160. 
+These CUDA functions implement different types of numerical flux 
+functions for the shallow water equations
 
-Copyright (C) 2016  SINTEF ICT
+Copyright (C) 2016, 2017, 2018 SINTEF Digital
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -23,13 +19,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 #pragma once
+#include "limiters.h"
 
 
 
 
 
 
-__device__ float pressure(float4 Q, float gamma) {
+inline __device__ float pressure(float4 Q, float gamma) {
     const float rho   = Q.x;
     const float rho_u = Q.y;
     const float rho_v = Q.z;
@@ -39,14 +36,13 @@ __device__ float pressure(float4 Q, float gamma) {
 }
 
 
-__device__ float4 F_func(const float4 Q, float gamma) {
+__device__ float4 F_func(const float4 Q, float P) {
     const float rho   = Q.x;
     const float rho_u = Q.y;
     const float rho_v = Q.z;
     const float E     = Q.w;
 
     const float u = rho_u/rho;
-    const float P = pressure(Q, gamma);
 
     float4 F;
 
@@ -56,4 +52,29 @@ __device__ float4 F_func(const float4 Q, float gamma) {
     F.w = u*(E+P);
 
     return F;
+}
+
+
+
+
+
+/**
+  * Central upwind flux function
+  */
+__device__ float4 CentralUpwindFlux(const float4 Qm, float4 Qp, const float gamma) {
+    
+    const float Pp = pressure(Qp, gamma);
+    const float4 Fp = F_func(Qp, Pp);
+    const float up = Qp.y / Qp.x;   // rho*u / rho
+    const float cp = sqrt(gamma*P*Qp.x); // sqrt(gamma*P/rho)
+
+    const float Pm = pressure(Qm, gamma);
+    const float3 Fm = F_func(Qm, Pm);
+    const float um = Qm.y / Qm.x;   // rho*u / rho
+    const float cm = sqrt(gamma*P/Qm.x); // sqrt(g*h)
+    
+    const float am = min(min(um-cm, up-cp), 0.0f); // largest negative wave speed
+    const float ap = max(max(um+cm, up+cp), 0.0f); // largest positive wave speed
+    
+    return ((ap*Fm - am*Fp) + ap*am*(Qp-Qm))/(ap-am);
 }

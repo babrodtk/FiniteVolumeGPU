@@ -82,9 +82,6 @@ class KP07 (Simulator.BaseSimulator):
                         nx, ny, \
                         2, 2, \
                         [None, None, None])
-                        
-    def __str__(self):
-        return "Kurganov-Petrova 2007"
     
     def simulate(self, t_end):
         return super().simulateRK(t_end, 2)

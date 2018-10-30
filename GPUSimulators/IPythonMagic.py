@@ -90,6 +90,17 @@ class MyIPythonMagic(Magics):
             self.logger.debug("==================================================================")
         atexit.register(exitfunc)
         
+        
+        
+        
+        
+        
+        
+        
+    logger_initialized = False
+    
+    
+    
     @line_magic
     @magic_arguments.magic_arguments()
     @magic_arguments.argument(
@@ -99,28 +110,42 @@ class MyIPythonMagic(Magics):
     @magic_arguments.argument(
         '--file_level', '-f', type=int, default=10, help='The level of logging to file [0, 50]')
     def setup_logging(self, line):
-        args = magic_arguments.parse_argstring(self.setup_logging, line)
-        import sys
-        
-        #Get root logger
-        logger = logging.getLogger('')
-        logger.setLevel(min(args.level, args.file_level))
+        if (self.logger_initialized):
+            logging.getLogger('').info("Global logger already initialized!")
+            return;
+        else:
+            self.logger_initialized = True
+            
+            args = magic_arguments.parse_argstring(self.setup_logging, line)
+            import sys
+            
+            #Get root logger
+            logger = logging.getLogger('')
+            logger.setLevel(min(args.level, args.file_level))
 
-        #Add log to screen
-        ch = logging.StreamHandler()
-        ch.setLevel(args.level)
-        logger.addHandler(ch)
-        logger.log(args.level, "Console logger using level %s", logging.getLevelName(args.level))
-        
-        #Add log to file
-        logger.log(args.level, "File logger using level %s to %s", logging.getLevelName(args.file_level), args.out)
-        fh = logging.FileHandler(args.out)
-        formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s: %(message)s')
-        fh.setFormatter(formatter)
-        fh.setLevel(args.file_level)
-        logger.addHandler(fh)
+            #Add log to screen
+            ch = logging.StreamHandler()
+            ch.setLevel(args.level)
+            logger.addHandler(ch)
+            logger.log(args.level, "Console logger using level %s", logging.getLevelName(args.level))
+            
+            #Add log to file
+            logger.log(args.level, "File logger using level %s to %s", logging.getLevelName(args.file_level), args.out)
+            fh = logging.FileHandler(args.out)
+            formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s: %(message)s')
+            fh.setFormatter(formatter)
+            fh.setLevel(args.file_level)
+            logger.addHandler(fh)
         
         logger.info("Python version %s", sys.version)
+
+
+
+
+
+
+
+
 
 # Register 
 ip = get_ipython()

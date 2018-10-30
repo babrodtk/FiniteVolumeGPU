@@ -97,7 +97,6 @@ void computeFluxG(float Q[3][block_height+2][block_width+2],
 }
 
 
-
 extern "C" {
 __global__ 
 void LxFKernel(
@@ -114,44 +113,50 @@ void LxFKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
-            
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
     
-    __shared__ float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2];
-    __shared__ float F[3][BLOCK_HEIGHT][BLOCK_WIDTH+1];
-    __shared__ float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH];
+    const unsigned int w = BLOCK_WIDTH;
+    const unsigned int h = BLOCK_HEIGHT;
+    const unsigned int gc = 1;
     
-    float* Q_ptr[3] = {h0_ptr_, hu0_ptr_, hv0_ptr_};
-    int Q_pitch[3] = {h0_pitch_, hu0_pitch_, hv0_pitch_};
+    __shared__ float Q[3][h+2][w+2];
+    __shared__ float F[3][h  ][w+1];
+    __shared__ float G[3][h+1][w  ];
     
-    readBlock<3, BLOCK_WIDTH+2, BLOCK_HEIGHT+2, BLOCK_WIDTH, BLOCK_HEIGHT>(Q_ptr, Q_pitch, Q, nx_+2, ny_+2);
+    //Read from global memory
+    readBlock<w, h, gc>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
+    readBlock<w, h, gc>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
+    readBlock<w, h, gc>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
     __syncthreads();
     
     //Set boundary conditions
-    noFlowBoundary1(Q, nx_, ny_);
+    noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
+    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+    noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
     __syncthreads();
     
     //Compute fluxes along the x and y axis
-    computeFluxF<BLOCK_WIDTH, BLOCK_HEIGHT>(Q, F, g_, dx_, dt_);
-    computeFluxG<BLOCK_WIDTH, BLOCK_HEIGHT>(Q, G, g_, dy_, dt_);
+    computeFluxF<w, h>(Q, F, g_, dx_, dt_);
+    computeFluxG<w, h>(Q, G, g_, dy_, dt_);
     __syncthreads();
-    
 
     //Evolve for all cells
+    const int tx = threadIdx.x;
+    const int ty = threadIdx.y;
     const int i = tx + 1; //Skip local ghost cells, i.e., +1
     const int j = ty + 1;
+    
     Q[0][j][i] += (F[0][ty][tx] - F[0][ty  ][tx+1]) * dt_ / dx_ 
                 + (G[0][ty][tx] - G[0][ty+1][tx  ]) * dt_ / dy_;
     Q[1][j][i] += (F[1][ty][tx] - F[1][ty  ][tx+1]) * dt_ / dx_ 
                 + (G[1][ty][tx] - G[1][ty+1][tx  ]) * dt_ / dy_;
     Q[2][j][i] += (F[2][ty][tx] - F[2][ty  ][tx+1]) * dt_ / dx_ 
                 + (G[2][ty][tx] - G[2][ty+1][tx  ]) * dt_ / dy_;
+    __syncthreads();
 
     //Write to main memory
-    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
-    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
-    writeBlock<BLOCK_WIDTH+2, BLOCK_HEIGHT+2, 1, 1>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
+    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
+    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
+    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
 }
 
 } // extern "C"

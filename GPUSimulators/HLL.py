@@ -75,9 +75,6 @@ class HLL (Simulator.BaseSimulator):
                         nx, ny, \
                         1, 1, \
                         [None, None, None])
-                        
-    def __str__(self):
-        return "Harten-Lax-van Leer"
     
     def simulate(self, t_end):
         return super().simulateEuler(t_end)

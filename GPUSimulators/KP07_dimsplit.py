@@ -82,9 +82,6 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                         nx, ny, \
                         2, 2, \
                         [None, None, None])
-                        
-    def __str__(self):
-        return "Kurganov-Petrova 2007 dimensionally split"
     
     def simulate(self, t_end):
         return super().simulateDimsplit(t_end)

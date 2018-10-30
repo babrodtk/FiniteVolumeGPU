@@ -81,9 +81,6 @@ class HLL2 (Simulator.BaseSimulator):
                         nx, ny, \
                         2, 2, \
                         [None, None, None])
-                        
-    def __str__(self):
-        return "Harten-Lax-van Leer (2nd order)"
     
     def simulate(self, t_end):
         return super().simulateDimsplit(t_end)

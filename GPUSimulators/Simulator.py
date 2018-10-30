@@ -86,6 +86,9 @@ class BaseSimulator:
                        int(np.ceil(self.ny / float(self.local_size[1]))) \
                       )
                       
+    def __str__(self):
+        return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
+                      
     """
     Function which simulates forward in time using the default simulation type
     """
@@ -112,7 +115,7 @@ class BaseSimulator:
                 # Step with forward Euler 
                 self.stepEuler(local_dt)
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds", self.__class__.__name__, t_end, self.t, n, t.secs)
+        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds (Euler)", self, t_end, self.t, n, t.secs)
         return self.t, n
         
     """
@@ -135,7 +138,7 @@ class BaseSimulator:
                 # Perform all the Runge-Kutta substeps
                 self.stepRK(local_dt, order)
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds", self.__class__.__name__, t_end, self.t, n, t.secs)
+        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds (RK2)", self, t_end, self.t, n, t.secs)
         return self.t, n
         
     """
@@ -159,7 +162,7 @@ class BaseSimulator:
                 self.stepDimsplitXY(local_dt)
                 self.stepDimsplitYX(local_dt)
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds", self.__class__.__name__, t_end, self.t, 2*n, t.secs)
+        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds (dimsplit)", self, t_end, self.t, 2*n, t.secs)
         return self.t, 2*n
         
     

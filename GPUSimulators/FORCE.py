@@ -80,9 +80,6 @@ class FORCE (Simulator.BaseSimulator):
                         nx, ny, \
                         1, 1, \
                         [None, None, None])
-                        
-    def __str__(self):
-        return "First order centered"
         
     def simulate(self, t_end):
         return super().simulateEuler(t_end)

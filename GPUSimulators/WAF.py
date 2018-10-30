@@ -75,9 +75,6 @@ class WAF (Simulator.BaseSimulator):
                         nx, ny, \
                         2, 2, \
                         [None, None, None])
-                        
-    def __str__(self):
-        return "Weighted average flux"
     
     def simulate(self, t_end):
         return super().simulateDimsplit(t_end)

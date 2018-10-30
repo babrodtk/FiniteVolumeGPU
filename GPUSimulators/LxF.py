@@ -77,9 +77,6 @@ class LxF (Simulator.BaseSimulator):
                         1, 1, \
                         [None, None, None])
         
-    def __str__(self):
-        return "Lax Friedrichs"
-        
     def simulate(self, t_end):
         return super().simulateEuler(t_end)
         

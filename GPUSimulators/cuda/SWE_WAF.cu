@@ -129,22 +129,29 @@ __global__ void WAFKernel(
         //Output h^{n+1}
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
-        float* hv1_ptr_, int hv1_pitch_) {    
+        float* hv1_ptr_, int hv1_pitch_) {   
+            
+    const unsigned int w = BLOCK_WIDTH;
+    const unsigned int h = BLOCK_HEIGHT;
+    const unsigned int gc = 2;
+         
     //Shared memory variables
-    __shared__ float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4];
-    __shared__ float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1];
+    __shared__ float Q[3][h+4][w+4];
+    __shared__ float F[3][h+1][w+1];
     
     
     
     //Read into shared memory Q from global memory
-    float* Q_ptr[3] = {h0_ptr_, hu0_ptr_, hv0_ptr_};
-    int Q_pitch[3] = {h0_pitch_, hu0_pitch_, hv0_pitch_};
-    readBlock<3, BLOCK_WIDTH+4, BLOCK_HEIGHT+4, BLOCK_WIDTH, BLOCK_HEIGHT>(Q_ptr, Q_pitch, Q, nx_+4, ny_+4);
+    readBlock<w, h, gc>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
+    readBlock<w, h, gc>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
+    readBlock<w, h, gc>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
     __syncthreads();
     
     
     //Set boundary conditions
-    noFlowBoundary2(Q, nx_, ny_);
+    noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
+    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+    noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
     __syncthreads();
     
     
@@ -158,7 +165,9 @@ __global__ void WAFKernel(
         __syncthreads();
         
         //Fix boundary conditions
-        noFlowBoundary2(Q, nx_, ny_);
+        noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
+        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+        noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         __syncthreads();
         
         //Compute fluxes along the y axis and evolve
@@ -176,7 +185,9 @@ __global__ void WAFKernel(
         __syncthreads();
         
         //Fix boundary conditions
-        noFlowBoundary2(Q, nx_, ny_);
+        noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
+        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+        noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         __syncthreads();
         
         //Compute fluxes along the x axis and evolve
@@ -189,10 +200,9 @@ __global__ void WAFKernel(
 
     
     // Write to main memory for all internal cells
-    writeBlock2(h1_ptr_, h1_pitch_,
-                hu1_ptr_, hu1_pitch_,
-                hv1_ptr_, hv1_pitch_,
-                Q, nx_, ny_);
+    writeBlock<w, h, 2>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
+    writeBlock<w, h, 2>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
+    writeBlock<w, h, 2>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
 }
 
 } // extern "C"

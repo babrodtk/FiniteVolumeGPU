@@ -1,12 +1,8 @@
 /*
-This OpenCL kernel implements the Kurganov-Petrova numerical scheme 
-for the shallow water equations, described in 
-A. Kurganov & Guergana Petrova
-A Second-Order Well-Balanced Positivity Preserving Central-Upwind
-Scheme for the Saint-Venant System Communications in Mathematical
-Sciences, 5 (2007), 133-160. 
+These CUDA functions implement different types of numerical flux 
+functions for the shallow water equations
 
-Copyright (C) 2016  SINTEF ICT
+Copyright (C) 2016, 2017, 2018 SINTEF Digital
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
