@@ -187,16 +187,20 @@ class CudaContext(object):
         kernel_path = os.path.abspath(os.path.join(self.module_path, kernel_filename))
         #self.logger.debug("Getting %s", kernel_filename)
             
-        # Create a hash of the kernel (and its includes)
+        # Create a hash of the kernel options
         options_hasher = hashlib.md5()
         options_hasher.update(str(defines).encode('utf-8') + str(compile_args).encode('utf-8'));
         options_hash = options_hasher.hexdigest()
-        options_hasher = None
+        
+        # Create hash of kernel souce
+        source_hash = CudaContext.hash_kernel( \
+                    kernel_path, \
+                    include_dirs=[self.module_path] + include_dirs)
+                    
+        # Create final hash
         root, ext = os.path.splitext(kernel_filename)
         kernel_hash = root \
-                + "_" + CudaContext.hash_kernel( \
-                    kernel_path, \
-                    include_dirs=[self.module_path] + include_dirs) \
+                + "_" + source_hash \
                 + "_" + options_hash \
                 + ext
         cached_kernel_filename = os.path.join(self.cache_path, kernel_hash)

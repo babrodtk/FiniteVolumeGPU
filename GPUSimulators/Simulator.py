@@ -85,6 +85,7 @@ class BaseSimulator:
         
         #Keep track of simulation time
         self.t = 0.0;
+        
                       
     def __str__(self):
         return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
