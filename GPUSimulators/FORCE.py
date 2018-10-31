@@ -68,8 +68,15 @@ class FORCE (Simulator.BaseSimulator):
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/SWE_FORCE.cu", "FORCEKernel", \
                                         "iiffffPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=self.local_size[0], \
-                                        BLOCK_HEIGHT=self.local_size[1])
+                                        defines={
+                                            'BLOCK_WIDTH': self.block_size[0], 
+                                            'BLOCK_HEIGHT': self.block_size[1]
+                                        }, \
+                                        compile_args={
+                                            'no_extern_c': True,
+                                            'options': ["--use_fast_math"], 
+                                        }, \
+                                        jit_compile_args={})
     
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, \
@@ -85,7 +92,7 @@ class FORCE (Simulator.BaseSimulator):
         return super().simulateEuler(t_end)
         
     def stepEuler(self, dt):
-        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \

@@ -55,20 +55,10 @@ class BaseSimulator:
         #Get logger
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
         
-        self.context = context
-        
-        if (self.context.autotuner):
-            peak_configuration = self.context.autotuner.get_peak_performance(self.__class__)
-            block_width = int(peak_configuration["block_width"])
-            block_height = int(peak_configuration["block_height"])
-            self.logger.debug("Used autotuning to get block size [%d x %d]", block_width, block_height)
-        
-        #Create a CUDA stream
-        self.stream = cuda.Stream()
-                           
         #Save input parameters
         #Notice that we need to specify them in the correct dataformat for the
         #GPU kernel
+        self.context = context
         self.nx = np.int32(nx)
         self.ny = np.int32(ny)
         self.dx = np.float32(dx)
@@ -76,15 +66,25 @@ class BaseSimulator:
         self.dt = np.float32(dt)
         self.g = np.float32(g) 
         
+        #Handle autotuning block size
+        if (self.context.autotuner):
+            peak_configuration = self.context.autotuner.get_peak_performance(self.__class__)
+            block_width = int(peak_configuration["block_width"])
+            block_height = int(peak_configuration["block_height"])
+            self.logger.debug("Used autotuning to get block size [%d x %d]", block_width, block_height)
+        
+        #Compute kernel launch parameters
+        self.block_size = (block_width, block_height, 1) 
+        self.grid_size = ( \
+                       int(np.ceil(self.nx / float(self.block_size[0]))), \
+                       int(np.ceil(self.ny / float(self.block_size[1]))) \
+                      )
+        
+        #Create a CUDA stream
+        self.stream = cuda.Stream()
+        
         #Keep track of simulation time
         self.t = 0.0;
-                            
-        #Compute kernel launch parameters
-        self.local_size = (block_width, block_height, 1) 
-        self.global_size = ( \
-                       int(np.ceil(self.nx / float(self.local_size[0]))), \
-                       int(np.ceil(self.ny / float(self.local_size[1]))) \
-                      )
                       
     def __str__(self):
         return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
@@ -115,7 +115,7 @@ class BaseSimulator:
                 # Step with forward Euler 
                 self.stepEuler(local_dt)
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds (Euler)", self, t_end, self.t, n, t.secs)
+        self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
         return self.t, n
         
     """
@@ -123,22 +123,21 @@ class BaseSimulator:
     Requires that the stepRK functionality is implemented in the subclasses
     """
     def simulateRK(self, t_end, order):
-        with Common.Timer(self.__class__.__name__ + ".simulateRK") as t:
-            # Compute number of timesteps to perform
-            n = int(t_end / self.dt + 1)
+        # Compute number of timesteps to perform
+        n = int(t_end / self.dt + 1)
+        
+        for i in range(0, n):
+            # Compute timestep for "this" iteration
+            local_dt = np.float32(min(self.dt, t_end-i*self.dt))
             
-            for i in range(0, n):
-                # Compute timestep for "this" iteration
-                local_dt = np.float32(min(self.dt, t_end-i*self.dt))
-                
-                # Stop if end reached (should not happen)
-                if (local_dt <= 0.0):
-                    break
+            # Stop if end reached (should not happen)
+            if (local_dt <= 0.0):
+                break
+        
+            # Perform all the Runge-Kutta substeps
+            self.stepRK(local_dt, order)
             
-                # Perform all the Runge-Kutta substeps
-                self.stepRK(local_dt, order)
-            
-        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds (RK2)", self, t_end, self.t, n, t.secs)
+        self.logger.info("%s simulated %f seconds to %f with %d steps (RK2)", self, t_end, self.t, n)
         return self.t, n
         
     """
@@ -146,23 +145,22 @@ class BaseSimulator:
     Requires that the stepDimsplitX and stepDimsplitY functionality is implemented in the subclasses
     """
     def simulateDimsplit(self, t_end):
-        with Common.Timer(self.__class__.__name__ + ".simulateDimsplit") as t:
-            # Compute number of timesteps to perform
-            n = int(t_end / (2.0*self.dt) + 1)
+        # Compute number of timesteps to perform
+        n = int(t_end / (2.0*self.dt) + 1)
+        
+        for i in range(0, n):
+            # Compute timestep for "this" iteration
+            local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
             
-            for i in range(0, n):
-                # Compute timestep for "this" iteration
-                local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
-                
-                # Stop if end reached (should not happen)
-                if (local_dt <= 0.0):
-                    break
-                
-                # Perform the dimensional split substeps
-                self.stepDimsplitXY(local_dt)
-                self.stepDimsplitYX(local_dt)
+            # Stop if end reached (should not happen)
+            if (local_dt <= 0.0):
+                break
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps in %f seconds (dimsplit)", self, t_end, self.t, 2*n, t.secs)
+            # Perform the dimensional split substeps
+            self.stepDimsplitXY(local_dt)
+            self.stepDimsplitYX(local_dt)
+            
+        self.logger.info("%s simulated %f seconds to %f with %d steps (dimsplit)", self, t_end, self.t, 2*n)
         return self.t, 2*n
         
     

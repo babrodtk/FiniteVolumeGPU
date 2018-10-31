@@ -70,8 +70,15 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/SWE_KP07_dimsplit.cu", "KP07DimsplitKernel", \
                                         "iifffffiPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=self.local_size[0], \
-                                        BLOCK_HEIGHT=self.local_size[1])
+                                        defines={
+                                            'BLOCK_WIDTH': self.block_size[0], 
+                                            'BLOCK_HEIGHT': self.block_size[1]
+                                        }, \
+                                        compile_args={
+                                            'no_extern_c': True,
+                                            'options': ["--use_fast_math"], 
+                                        }, \
+                                        jit_compile_args={})
     
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, \
@@ -90,7 +97,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         return self.stepDimsplitXY(dt)
     
     def stepDimsplitXY(self, dt):
-        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
@@ -106,7 +113,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         self.t += dt
     
     def stepDimsplitYX(self, dt):
-        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
