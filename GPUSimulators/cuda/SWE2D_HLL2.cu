@@ -159,6 +159,7 @@ __global__ void HLL2Kernel(
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc = 2;
+    const unsigned int vars = 3;
             
     //Shared memory variables
     __shared__ float  Q[3][h+4][w+4];
@@ -184,10 +185,7 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        
-        evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
-        evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
-        evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
+        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
         __syncthreads();
         
         //Set boundary conditions
@@ -201,10 +199,7 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        
-        evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
-        evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
-        evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
+        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
         __syncthreads();
     }
     //Step 1 => evolve y first, then x
@@ -214,10 +209,7 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        
-        evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
-        evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
-        evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
+        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
         __syncthreads();
         
         //Set boundary conditions
@@ -231,10 +223,7 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        
-        evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
-        evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
-        evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
+        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
         __syncthreads();
     }
     

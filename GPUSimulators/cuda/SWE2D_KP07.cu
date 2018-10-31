@@ -122,6 +122,7 @@ __global__ void KP07Kernel(
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc = 2;
+    const unsigned int vars = 3;
         
     //Index of thread within block
     const int tx = threadIdx.x;

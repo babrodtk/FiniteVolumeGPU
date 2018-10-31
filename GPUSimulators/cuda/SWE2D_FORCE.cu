@@ -117,6 +117,7 @@ __global__ void FORCEKernel(
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc = 1;
+    const unsigned int vars = 3;
     
     __shared__ float Q[3][h+2][w+2];
     __shared__ float F[3][h+1][w+1];
@@ -136,10 +137,7 @@ __global__ void FORCEKernel(
     //Compute flux along x, and evolve
     computeFluxF(Q, F, g_, dx_, dt_);
     __syncthreads();
-    
-    evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
-    evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
-    evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
+    evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
     __syncthreads();
     
     //Set boundary conditions
@@ -151,10 +149,7 @@ __global__ void FORCEKernel(
     //Compute flux along y, and evolve
     computeFluxG(Q, F, g_, dy_, dt_);
     __syncthreads();
-    
-    evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
-    evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
-    evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
+    evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
     __syncthreads();
     
     //Write to main memory

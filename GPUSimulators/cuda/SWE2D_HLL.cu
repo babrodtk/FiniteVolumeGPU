@@ -124,6 +124,7 @@ __global__ void HLLKernel(
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc = 1;
+    const unsigned int vars = 3;
     
     //Shared memory variables
     __shared__ float Q[3][h+2][w+2];
@@ -145,9 +146,7 @@ __global__ void HLLKernel(
     computeFluxF(Q, F, g_);
     __syncthreads();
     
-    evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
-    evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
-    evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
+    evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
     __syncthreads();
     
     //Set boundary conditions
@@ -160,9 +159,7 @@ __global__ void HLLKernel(
     computeFluxG(Q, F, g_);
     __syncthreads();
     
-    evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
-    evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
-    evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
+    evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
     __syncthreads();
     
     // Write to main memory for all internal cells

@@ -245,9 +245,9 @@ __device__ void noFlowBoundary(float Q[block_height+2*ghost_cells][block_width+2
 
 
 
-template<int block_width, int block_height, int ghost_cells>
-__device__ void evolveF(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells],
-              float F[block_height+1][block_width+1],
+template<int block_width, int block_height, int ghost_cells, int vars>
+__device__ void evolveF(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
+              float F[vars][block_height+1][block_width+1],
               const float dx_, const float dt_) {
     //Index of thread within block
     const int tx = threadIdx.x;
@@ -260,8 +260,9 @@ __device__ void evolveF(float Q[block_height+2*ghost_cells][block_width+2*ghost_
     //const int ti = blockDim.x*blockIdx.x + threadIdx.x + ghost_cells; //Skip global ghost cells, i.e., +1
     //const int tj = blockDim.y*blockIdx.y + threadIdx.y + ghost_cells;
     //if (ti > ghost_cells-1 && ti < nx_+ghost_cells && tj > ghost_cells-1 && tj < ny_+ghost_cells) {
-    Q[j][i] = Q[j][i] + (F[ty][tx] - F[ty][tx+1]) * dt_ / dx_;
-    
+    for (int var=0; var < vars; ++var) {
+        Q[var][j][i] = Q[var][j][i] + (F[var][ty][tx] - F[var][ty][tx+1]) * dt_ / dx_;
+    }
 }
 
 
@@ -272,9 +273,9 @@ __device__ void evolveF(float Q[block_height+2*ghost_cells][block_width+2*ghost_
 /**
   * Evolves the solution in time along the y axis (dimensional splitting)
   */
-template<int block_width, int block_height, int ghost_cells>
-__device__ void evolveG(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells],
-              float G[block_height+1][block_width+1],
+template<int block_width, int block_height, int ghost_cells, int vars>
+__device__ void evolveG(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
+              float G[vars][block_height+1][block_width+1],
               const float dy_, const float dt_) {
     //Index of thread within block
     const int tx = threadIdx.x;
@@ -283,7 +284,9 @@ __device__ void evolveG(float Q[block_height+2*ghost_cells][block_width+2*ghost_
     const int i = tx + ghost_cells; //Skip local ghost cells, i.e., +1
     const int j = ty + ghost_cells;
     
-    Q[j][i] = Q[j][i] + (G[ty][tx] - G[ty+1][tx]) * dt_ / dy_;
+    for (int var=0; var < vars; ++var) {
+        Q[var][j][i] = Q[var][j][i] + (G[var][ty][tx] - G[var][ty+1][tx]) * dt_ / dy_;
+    }
 }
 
 
