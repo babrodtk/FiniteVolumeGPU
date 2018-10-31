@@ -20,8 +20,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
-import numpy as np
 from GPUSimulators import Simulator, Common
+import numpy as np
 
 
         
@@ -34,7 +34,7 @@ from GPUSimulators import Simulator, Common
 """
 Class that solves the SW equations using the Forward-Backward linear scheme
 """
-class HLL2Euler (Simulator.BaseSimulator):
+class EE2D_KP07_dimsplit (Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -47,31 +47,40 @@ class HLL2Euler (Simulator.BaseSimulator):
     dx: Grid cell spacing along x-axis
     dy: Grid cell spacing along y-axis
     dt: Size of each timestep 
-    g: Gravitational accelleration
+    gamma: Gas constant
+    p: pressure
     """
     def __init__(self, \
                  context, \
                  rho, rho_u, rho_v, E, \
                  nx, ny, \
                  dx, dy, dt, \
-                 g, \
-                 theta=1.8, \
+                 gamma, \
+                 theta=1.3, \
                  block_width=16, block_height=16):
                  
         # Call super constructor
         super().__init__(context, \
             nx, ny, \
             dx, dy, dt, \
-            g, \
-            block_width, block_height);
+            block_width, block_height)
+        self.gamma = np.float32(gamma)
             
         self.theta = np.float32(theta)
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("HLL2_kernel.cu", "HLL2Kernel", \
-                                        "iifffffiPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=self.local_size[0], \
-                                        BLOCK_HEIGHT=self.local_size[1])
+        #Get kernels
+        self.kernel = context.get_prepared_kernel("cuda/EE2D_KP07_dimsplit.cu", "KP07DimsplitKernel", \
+                                        "iifffffiPiPiPiPiPiPiPiPi", \
+                                        defines={
+                                            'BLOCK_WIDTH': self.block_size[0], 
+                                            'BLOCK_HEIGHT': self.block_size[1]
+                                        }, \
+                                        compile_args={
+                                            'no_extern_c': True,
+                                            'options': ["--use_fast_math"], 
+                                        }, \
+                                        jit_compile_args={})
         
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, \
@@ -90,10 +99,10 @@ class HLL2Euler (Simulator.BaseSimulator):
         return self.stepDimsplitXY(dt)
                 
     def stepDimsplitXY(self, dt):
-        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
-                self.g, \
+                self.gamma, \
                 self.theta, \
                 np.int32(0), \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
@@ -102,16 +111,16 @@ class HLL2Euler (Simulator.BaseSimulator):
                 self.u0[3].data.gpudata, self.u0[3].data.strides[0], \
                 self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0]
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], \
                 self.u1[3].data.gpudata, self.u1[3].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
         self.t += dt
             
     def stepDimsplitYX(self, dt):
-        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
-                self.g, \
+                self.gamma, \
                 self.theta, \
                 np.int32(1), \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
@@ -120,7 +129,7 @@ class HLL2Euler (Simulator.BaseSimulator):
                 self.u0[3].data.gpudata, self.u0[3].data.strides[0], \
                 self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0]
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], \
                 self.u1[3].data.gpudata, self.u1[3].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
         self.t += dt

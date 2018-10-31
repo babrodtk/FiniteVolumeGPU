@@ -184,7 +184,10 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF2(Q, F, nx_, ny_, dx_, dt_);
+        
+        evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
+        evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
+        evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
         __syncthreads();
         
         //Set boundary conditions
@@ -198,7 +201,10 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG2(Q, F, nx_, ny_, dy_, dt_);
+        
+        evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
+        evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
+        evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
         __syncthreads();
     }
     //Step 1 => evolve y first, then x
@@ -208,7 +214,10 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG2(Q, F, nx_, ny_, dy_, dt_);
+        
+        evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
+        evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
+        evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
         __syncthreads();
         
         //Set boundary conditions
@@ -222,7 +231,10 @@ __global__ void HLL2Kernel(
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF2(Q, F, nx_, ny_, dx_, dt_);
+        
+        evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
+        evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
+        evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
         __syncthreads();
     }
     

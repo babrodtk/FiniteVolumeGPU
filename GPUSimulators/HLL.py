@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 from GPUSimulators import Simulator, Common
+import numpy as np
 
 
 
@@ -57,11 +58,11 @@ class HLL (Simulator.BaseSimulator):
         super().__init__(context, \
             nx, ny, \
             dx, dy, dt, \
-            g, \
             block_width, block_height);
+        self.g = np.float32(g) 
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("cuda/SWE_HLL.cu", "HLLKernel", \
+        self.kernel = context.get_prepared_kernel("cuda/SWE2D_HLL.cu", "HLLKernel", \
                                         "iiffffPiPiPiPiPiPi", \
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 

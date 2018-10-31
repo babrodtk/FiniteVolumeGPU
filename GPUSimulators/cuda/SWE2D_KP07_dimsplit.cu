@@ -181,7 +181,9 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF2(Q, F, nx_, ny_, dx_, dt_);
+        evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
+        evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
+        evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
         __syncthreads();
         
         //Set boundary conditions
@@ -190,12 +192,18 @@ __global__ void KP07DimsplitKernel(
         noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         __syncthreads();
         
+        
+        
         //Compute fluxes along the y axis and evolve
         minmodSlopeY(Q, Qx, theta_);
         __syncthreads();
+        
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG2(Q, F, nx_, ny_, dy_, dt_);
+        
+        evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
+        evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
+        evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
         __syncthreads();
     }
     //Step 1 => evolve y first, then x
@@ -205,7 +213,10 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG2(Q, F, nx_, ny_, dy_, dt_);
+        
+        evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
+        evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
+        evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
         __syncthreads();
         
         //Set boundary conditions
@@ -219,15 +230,17 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF2(Q, F, nx_, ny_, dx_, dt_);
+        evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
+        evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
+        evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
         __syncthreads();
     }
     
     
     // Write to main memory for all internal cells
-    writeBlock<w, h, 2>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
-    writeBlock<w, h, 2>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
-    writeBlock<w, h, 2>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
+    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
+    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
+    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
 }
 
 } // extern "C"

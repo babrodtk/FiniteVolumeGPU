@@ -144,7 +144,10 @@ __global__ void HLLKernel(
     //Compute F flux
     computeFluxF(Q, F, g_);
     __syncthreads();
-    evolveF1(Q, F, nx_, ny_, dx_, dt_);
+    
+    evolveF<w, h, gc>(Q[0], F[0], dx_, dt_);
+    evolveF<w, h, gc>(Q[1], F[1], dx_, dt_);
+    evolveF<w, h, gc>(Q[2], F[2], dx_, dt_);
     __syncthreads();
     
     //Set boundary conditions
@@ -156,7 +159,10 @@ __global__ void HLLKernel(
     //Compute G flux
     computeFluxG(Q, F, g_);
     __syncthreads();
-    evolveG1(Q, F, nx_, ny_, dy_, dt_);
+    
+    evolveG<w, h, gc>(Q[0], F[0], dy_, dt_);
+    evolveG<w, h, gc>(Q[1], F[1], dy_, dt_);
+    evolveG<w, h, gc>(Q[2], F[2], dy_, dt_);
     __syncthreads();
     
     // Write to main memory for all internal cells

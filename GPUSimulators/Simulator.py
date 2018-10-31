@@ -44,13 +44,11 @@ class BaseSimulator:
     dx: Grid cell spacing along x-axis (20 000 m)
     dy: Grid cell spacing along y-axis (20 000 m)
     dt: Size of each timestep (90 s)
-    g: Gravitational accelleration (9.81 m/s^2)
     """
     def __init__(self, \
                  context, \
                  nx, ny, \
                  dx, dy, dt, \
-                 g, \
                  block_width, block_height):
         #Get logger
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
@@ -64,7 +62,6 @@ class BaseSimulator:
         self.dx = np.float32(dx)
         self.dy = np.float32(dy)
         self.dt = np.float32(dt)
-        self.g = np.float32(g) 
         
         #Handle autotuning block size
         if (self.context.autotuner):
