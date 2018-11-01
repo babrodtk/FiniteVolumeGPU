@@ -31,77 +31,65 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __device__
 void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
+                  float Qx[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float F[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   const float g_, const float dx_, const float dt_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    int j=ty;
-    const int l = j + 2; //Skip ghost cells
-    for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
-        const int k = i + 1;
-        // Reconstruct point values of Q at the left and right hand side 
-        // of the cell for both the left (i) and right (i+1) cell 
-        const float3 Q_rl = make_float3(Q[0][l][k+1] - 0.5f*Qx[0][j][i+1],
-                                        Q[1][l][k+1] - 0.5f*Qx[1][j][i+1],
-                                        Q[2][l][k+1] - 0.5f*Qx[2][j][i+1]);
-        const float3 Q_rr = make_float3(Q[0][l][k+1] + 0.5f*Qx[0][j][i+1],
-                                        Q[1][l][k+1] + 0.5f*Qx[1][j][i+1],
-                                        Q[2][l][k+1] + 0.5f*Qx[2][j][i+1]);
-                                     
-        const float3 Q_ll = make_float3(Q[0][l][k] - 0.5f*Qx[0][j][i],
-                                        Q[1][l][k] - 0.5f*Qx[1][j][i],
-                                        Q[2][l][k] - 0.5f*Qx[2][j][i]);
-        const float3 Q_lr = make_float3(Q[0][l][k] + 0.5f*Qx[0][j][i],
-                                        Q[1][l][k] + 0.5f*Qx[1][j][i],
-                                        Q[2][l][k] + 0.5f*Qx[2][j][i]);
-                                
-        //Evolve half a timestep (predictor step)
-        const float3 Q_r_bar = Q_rl + dt_/(2.0f*dx_) * (F_func(Q_rl, g_) - F_func(Q_rr, g_));
-        const float3 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, g_) - F_func(Q_lr, g_));
+    for (int j=threadIdx.y; j<BLOCK_HEIGHT+4; j+=BLOCK_HEIGHT) {
+        for (int i=threadIdx.x+1; i<BLOCK_WIDTH+2; i+=BLOCK_WIDTH) {
+            // Reconstruct point values of Q at the left and right hand side 
+            // of the cell for both the left (i) and right (i+1) cell 
+            const float3 Q_rl = make_float3(Q[0][j][i+1] - 0.5f*Qx[0][j][i+1],
+                                            Q[1][j][i+1] - 0.5f*Qx[1][j][i+1],
+                                            Q[2][j][i+1] - 0.5f*Qx[2][j][i+1]);
+            const float3 Q_rr = make_float3(Q[0][j][i+1] + 0.5f*Qx[0][j][i+1],
+                                            Q[1][j][i+1] + 0.5f*Qx[1][j][i+1],
+                                            Q[2][j][i+1] + 0.5f*Qx[2][j][i+1]);
 
-        // Compute flux based on prediction
-        const float3 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, g_);
-        
-        //Write to shared memory
-        F[0][j][i] = flux.x;
-        F[1][j][i] = flux.y;
-        F[2][j][i] = flux.z;
+            const float3 Q_ll = make_float3(Q[0][j][i] - 0.5f*Qx[0][j][i],
+                                            Q[1][j][i] - 0.5f*Qx[1][j][i],
+                                            Q[2][j][i] - 0.5f*Qx[2][j][i]);
+            const float3 Q_lr = make_float3(Q[0][j][i] + 0.5f*Qx[0][j][i],
+                                            Q[1][j][i] + 0.5f*Qx[1][j][i],
+                                            Q[2][j][i] + 0.5f*Qx[2][j][i]);
+                                    
+            //Evolve half a timestep (predictor step)
+            const float3 Q_r_bar = Q_rl + dt_/(2.0f*dx_) * (F_func(Q_rl, g_) - F_func(Q_rr, g_));
+            const float3 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, g_) - F_func(Q_lr, g_));
+
+            // Compute flux based on prediction
+            const float3 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, g_);
+            
+            //Write to shared memory
+            F[0][j][i] = flux.x;
+            F[1][j][i] = flux.y;
+            F[2][j][i] = flux.z;
+        }
     }    
 }
 
 __device__
 void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float Qy[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
+                  float Qy[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float G[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
                   const float g_, const float dy_, const float dt_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
-        const int l = j + 1;
-        {
-            int i=tx;
-            const int k = i + 2; //Skip ghost cells
+    for (int j=threadIdx.y+1; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
+        for (int i=threadIdx.x; i<BLOCK_WIDTH+4; i+=BLOCK_WIDTH) {
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
             //NOte that hu and hv are swapped ("transposing" the domain)!
-            const float3 Q_rl = make_float3(Q[0][l+1][k] - 0.5f*Qy[0][j+1][i],
-                                            Q[2][l+1][k] - 0.5f*Qy[2][j+1][i],
-                                            Q[1][l+1][k] - 0.5f*Qy[1][j+1][i]);
-            const float3 Q_rr = make_float3(Q[0][l+1][k] + 0.5f*Qy[0][j+1][i],
-                                            Q[2][l+1][k] + 0.5f*Qy[2][j+1][i],
-                                            Q[1][l+1][k] + 0.5f*Qy[1][j+1][i]);
+            const float3 Q_rl = make_float3(Q[0][j+1][i] - 0.5f*Qy[0][j+1][i],
+                                            Q[2][j+1][i] - 0.5f*Qy[2][j+1][i],
+                                            Q[1][j+1][i] - 0.5f*Qy[1][j+1][i]);
+            const float3 Q_rr = make_float3(Q[0][j+1][i] + 0.5f*Qy[0][j+1][i],
+                                            Q[2][j+1][i] + 0.5f*Qy[2][j+1][i],
+                                            Q[1][j+1][i] + 0.5f*Qy[1][j+1][i]);
                                         
-            const float3 Q_ll = make_float3(Q[0][l][k] - 0.5f*Qy[0][j][i],
-                                            Q[2][l][k] - 0.5f*Qy[2][j][i],
-                                            Q[1][l][k] - 0.5f*Qy[1][j][i]);
-            const float3 Q_lr = make_float3(Q[0][l][k] + 0.5f*Qy[0][j][i],
-                                            Q[2][l][k] + 0.5f*Qy[2][j][i],
-                                            Q[1][l][k] + 0.5f*Qy[1][j][i]);
+            const float3 Q_ll = make_float3(Q[0][j][i] - 0.5f*Qy[0][j][i],
+                                            Q[2][j][i] - 0.5f*Qy[2][j][i],
+                                            Q[1][j][i] - 0.5f*Qy[1][j][i]);
+            const float3 Q_lr = make_float3(Q[0][j][i] + 0.5f*Qy[0][j][i],
+                                            Q[2][j][i] + 0.5f*Qy[2][j][i],
+                                            Q[1][j][i] + 0.5f*Qy[1][j][i]);
                                      
             //Evolve half a timestep (predictor step)
             const float3 Q_r_bar = Q_rl + dt_/(2.0f*dy_) * (F_func(Q_rl, g_) - F_func(Q_rr, g_));
@@ -153,8 +141,8 @@ __global__ void KP07DimsplitKernel(
         
     //Shared memory variables
     __shared__ float  Q[3][h+4][w+4];
-    __shared__ float Qx[3][h+2][w+2];
-    __shared__ float  F[3][h+1][w+1];
+    __shared__ float Qx[3][h+4][w+4];
+    __shared__ float  F[3][h+4][w+4];
     
     
     

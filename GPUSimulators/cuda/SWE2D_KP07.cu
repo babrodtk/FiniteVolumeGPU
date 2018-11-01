@@ -96,6 +96,39 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
 
 
 
+__device__ void minmodSlopeX(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float Qx[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  const float theta_) {
+    //Reconstruct slopes along x axis
+    for (int p=0; p<3; ++p) {
+        {
+            const int j = threadIdx.y+2;
+            for (int i=threadIdx.x+1; i<BLOCK_WIDTH+3; i+=BLOCK_WIDTH) {
+                Qx[p][j-2][i-1] = minmodSlope(Q[p][j][i-1], Q[p][j][i], Q[p][j][i+1], theta_);
+            }
+        }
+    }
+}
+
+
+/**
+  * Reconstructs a minmod slope for a whole block along the ordinate
+  */
+__device__ void minmodSlopeY(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float Qy[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
+                  const float theta_) {
+    //Reconstruct slopes along y axis
+    for (int p=0; p<3; ++p) {
+        const int i = threadIdx.x + 2;
+        for (int j=threadIdx.y+1; j<BLOCK_HEIGHT+3; j+=BLOCK_HEIGHT) {
+            {
+                Qy[p][j-1][i-2] = minmodSlope(Q[p][j-1][i], Q[p][j][i], Q[p][j+1][i], theta_);
+            }
+        }
+    }
+}
+
+
 /**
   * This unsplit kernel computes the 2D numerical scheme with a TVD RK2 time integration scheme
   */
@@ -159,8 +192,8 @@ __global__ void KP07Kernel(
     
     
     //Reconstruct slopes along x and axis
-    minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
-    minmodSlopeY<w, h, gc, vars>(Q, Qy, theta_);
+    minmodSlopeX(Q, Qx, theta_);
+    minmodSlopeY(Q, Qy, theta_);
     __syncthreads();
     
     

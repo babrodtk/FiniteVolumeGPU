@@ -31,24 +31,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
   */
 __device__
 void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float F[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
+                  float F[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   const float g_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    {
-        const int j=ty;
-        const int l = j + 1; //Skip ghost cells     
-        for (int i=tx; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) { 
-            const int k = i;
-            
-            const float3 Q_l  = make_float3(Q[0][l][k  ], Q[1][l][k  ], Q[2][l][k  ]);
-            const float3 Q_r  = make_float3(Q[0][l][k+1], Q[1][l][k+1], Q[2][l][k+1]);
-            
+    for (int j=threadIdx.y; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
+        for (int i=threadIdx.x; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
+            // Q at interface from the right and left
+            const float3 Q_r = make_float3(Q[0][j][i+1],
+                                           Q[1][j][i+1],
+                                           Q[2][j][i+1]);
+            const float3 Q_l = make_float3(Q[0][j][i],
+                                           Q[1][j][i],
+                                           Q[2][j][i]);
+                       
+            // Computed flux
             const float3 flux = HLL_flux(Q_l, Q_r, g_);
-            
-            //Write to shared memory
             F[0][j][i] = flux.x;
             F[1][j][i] = flux.y;
             F[2][j][i] = flux.z;
@@ -65,27 +61,23 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
   */
 __device__
 void computeFluxG(float Q[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float G[3][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
+                  float G[3][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
                   const float g_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    for (int j=ty; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
-        const int l = j;
-        {
-            const int i=tx;
-            const int k = i + 1; //Skip ghost cells
-            
-            //NOte that hu and hv are swapped ("transposing" the domain)!
-            const float3 Q_l = make_float3(Q[0][l  ][k], Q[2][l  ][k], Q[1][l  ][k]);
-            const float3 Q_r = make_float3(Q[0][l+1][k], Q[2][l+1][k], Q[1][l+1][k]);
+    //Compute fluxes along the y axis
+    for (int j=threadIdx.y; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
+        for (int i=threadIdx.x; i<BLOCK_WIDTH+2; i+=BLOCK_WIDTH) {
+            // Q at interface from the right and left
+            // Note that we swap hu and hv
+            const float3 Q_r = make_float3(Q[0][j+1][i],
+                                           Q[2][j+1][i],
+                                           Q[1][j+1][i]);
+            const float3 Q_l = make_float3(Q[0][j][i],
+                                           Q[2][j][i],
+                                           Q[1][j][i]);
                                        
             // Computed flux
-            const float3 flux = HLL_flux(Q_l, Q_r, g_);
-            
-            //Write to shared memory
             //Note that we here swap hu and hv back to the original
+            const float3 flux = HLL_flux(Q_l, Q_r, g_);
             G[0][j][i] = flux.x;
             G[1][j][i] = flux.z;
             G[2][j][i] = flux.y;
@@ -128,7 +120,7 @@ __global__ void HLLKernel(
     
     //Shared memory variables
     __shared__ float Q[3][h+2][w+2];
-    __shared__ float F[3][h+1][w+1];
+    __shared__ float F[3][h+2][w+2];
     
     //Read into shared memory
     readBlock<w, h, gc>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
