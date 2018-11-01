@@ -181,7 +181,7 @@ __global__ void HLL2Kernel(
     //Step 0 => evolve x first, then y
     if (step_ == 0) {
         //Compute fluxes along the x axis and evolve
-        minmodSlopeX(Q, Qx, theta_);
+        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
@@ -195,7 +195,7 @@ __global__ void HLL2Kernel(
         __syncthreads();
         
         //Compute fluxes along the y axis and evolve
-        minmodSlopeY(Q, Qx, theta_);
+        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
@@ -205,7 +205,7 @@ __global__ void HLL2Kernel(
     //Step 1 => evolve y first, then x
     else {
         //Compute fluxes along the y axis and evolve
-        minmodSlopeY(Q, Qx, theta_);
+        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
@@ -219,7 +219,7 @@ __global__ void HLL2Kernel(
         __syncthreads();
         
         //Compute fluxes along the x axis and evolve
-        minmodSlopeX(Q, Qx, theta_);
+        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();

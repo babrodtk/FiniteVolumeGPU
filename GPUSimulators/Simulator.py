@@ -82,6 +82,9 @@ class BaseSimulator:
         
         #Keep track of simulation time
         self.t = 0.0;
+
+        #Log progress every n seconds during simulation
+        self.log_every = 5
         
                       
     def __str__(self):
@@ -101,6 +104,8 @@ class BaseSimulator:
         with Common.Timer(self.__class__.__name__ + ".simulateEuler") as t:
             # Compute number of timesteps to perform
             n = int(t_end / self.dt + 1)
+
+            next_print = self.log_every
             
             for i in range(0, n):
                 # Compute timestep for "this" iteration
@@ -112,6 +117,12 @@ class BaseSimulator:
             
                 # Step with forward Euler 
                 self.stepEuler(local_dt)
+
+                #Print info
+                if (t.elapsed() >= next_print):
+                    self.logger.info("%s simulated %d of %d steps (Euler)", self, i, n)
+                    next_print += self.log_every
+    
             
         self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
         return self.t, n
@@ -121,19 +132,27 @@ class BaseSimulator:
     Requires that the stepRK functionality is implemented in the subclasses
     """
     def simulateRK(self, t_end, order):
-        # Compute number of timesteps to perform
-        n = int(t_end / self.dt + 1)
-        
-        for i in range(0, n):
-            # Compute timestep for "this" iteration
-            local_dt = np.float32(min(self.dt, t_end-i*self.dt))
+        with Common.Timer(self.__class__.__name__ + ".simulateRK") as t:
+            # Compute number of timesteps to perform
+            n = int(t_end / self.dt + 1)
+
+            next_print = self.log_every
             
-            # Stop if end reached (should not happen)
-            if (local_dt <= 0.0):
-                break
-        
-            # Perform all the Runge-Kutta substeps
-            self.stepRK(local_dt, order)
+            for i in range(0, n):
+                # Compute timestep for "this" iteration
+                local_dt = np.float32(min(self.dt, t_end-i*self.dt))
+                
+                # Stop if end reached (should not happen)
+                if (local_dt <= 0.0):
+                    break
+            
+                # Perform all the Runge-Kutta substeps
+                self.stepRK(local_dt, order)
+
+                #Print info
+                if (t.elapsed() >= next_print):
+                    self.logger.info("%s simulated %d of %d steps (RK2)", self, i, n)
+                    next_print += self.log_every
             
         self.logger.info("%s simulated %f seconds to %f with %d steps (RK2)", self, t_end, self.t, n)
         return self.t, n
@@ -143,22 +162,30 @@ class BaseSimulator:
     Requires that the stepDimsplitX and stepDimsplitY functionality is implemented in the subclasses
     """
     def simulateDimsplit(self, t_end):
-        # Compute number of timesteps to perform
-        n = int(t_end / (2.0*self.dt) + 1)
-        
-        for i in range(0, n):
-            # Compute timestep for "this" iteration
-            local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
+        with Common.Timer(self.__class__.__name__ + ".simulateDimsplit") as t:
+            # Compute number of timesteps to perform
+            n = int(t_end / (2.0*self.dt) + 1)
             
-            # Stop if end reached (should not happen)
-            if (local_dt <= 0.0):
-                break
+            next_print = self.log_every
+
+            for i in range(0, n):
+                # Compute timestep for "this" iteration
+                local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
+                
+                # Stop if end reached (should not happen)
+                if (local_dt <= 0.0):
+                    break
+                
+                # Perform the dimensional split substeps
+                self.stepDimsplitXY(local_dt)
+                self.stepDimsplitYX(local_dt)
+
+                #Print info
+                if (t.elapsed() >= next_print):
+                    self.logger.info("%s simulated %d of %d steps (Dimsplit)", self, i, n)
+                    next_print += self.log_every
             
-            # Perform the dimensional split substeps
-            self.stepDimsplitXY(local_dt)
-            self.stepDimsplitYX(local_dt)
-            
-        self.logger.info("%s simulated %f seconds to %f with %d steps (dimsplit)", self, t_end, self.t, 2*n)
+        self.logger.info("%s simulated %f seconds to %f with %d steps (Dimsplit)", self, t_end, self.t, 2*n)
         return self.t, 2*n
         
     

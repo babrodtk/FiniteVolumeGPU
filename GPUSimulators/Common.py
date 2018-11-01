@@ -53,6 +53,9 @@ class Timer(object):
         self.secs = self.end - self.start
         self.msecs = self.secs * 1000 # millisecs
         self.logger.log(self.log_level, "%s: %f ms", self.tag, self.msecs)
+
+    def elapsed(self):
+        return time.time() - self.start
             
             
             

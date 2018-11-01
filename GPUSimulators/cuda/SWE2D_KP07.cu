@@ -159,8 +159,8 @@ __global__ void KP07Kernel(
     
     
     //Reconstruct slopes along x and axis
-    minmodSlopeX(Q, Qx, theta_);
-    minmodSlopeY(Q, Qy, theta_);
+    minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+    minmodSlopeY<w, h, gc, vars>(Q, Qy, theta_);
     __syncthreads();
     
     

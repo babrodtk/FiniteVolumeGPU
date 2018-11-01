@@ -61,17 +61,17 @@ __device__ float4 F_func(const float4 Q, float P) {
 /**
   * Central upwind flux function
   */
-__device__ float4 CentralUpwindFlux(const float4 Qm, float4 Qp, const float gamma) {
+__device__ float4 CentralUpwindFlux(const float4 Qm, const float4 Qp, const float gamma) {
     
     const float Pp = pressure(Qp, gamma);
     const float4 Fp = F_func(Qp, Pp);
     const float up = Qp.y / Qp.x;   // rho*u / rho
-    const float cp = sqrt(gamma*Pp*Qp.x); // sqrt(gamma*P/rho)
+    const float cp = sqrt(gamma*Pp/Qp.x); // sqrt(gamma*P/rho)
 
     const float Pm = pressure(Qm, gamma);
     const float4 Fm = F_func(Qm, Pm);
     const float um = Qm.y / Qm.x;   // rho*u / rho
-    const float cm = sqrt(gamma*Pm/Qm.x); // sqrt(g*h)
+    const float cm = sqrt(gamma*Pm/Qm.x); // sqrt(gamma*P/rho)
     
     const float am = min(min(um-cm, up-cp), 0.0f); // largest negative wave speed
     const float ap = max(max(um+cm, up+cp), 0.0f); // largest positive wave speed

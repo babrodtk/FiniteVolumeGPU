@@ -57,7 +57,7 @@ class EE2D_KP07_dimsplit (Simulator.BaseSimulator):
                  dx, dy, dt, \
                  gamma, \
                  theta=1.3, \
-                 block_width=16, block_height=16):
+                 block_width=8, block_height=4):
                  
         # Call super constructor
         super().__init__(context, \

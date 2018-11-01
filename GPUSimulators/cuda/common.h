@@ -293,6 +293,21 @@ __device__ void evolveG(float Q[vars][block_height+2*ghost_cells][block_width+2*
 
 
 
+/**
+  * Helper function for debugging etc.
+  */
+template<int shmem_width, int shmem_height, int vars>
+__device__ void memset(float Q[vars][shmem_height][shmem_width], float value) {
+    for (int k=0; k<vars; ++k) {
+        for (int j=threadIdx.y; j<shmem_height; ++j) {
+            for (int i=threadIdx.x; i<shmem_width; ++i) {
+                Q[k][j][i] = value;
+            }
+        }
+    }
+} 
+
+
 
 
 
