@@ -92,7 +92,7 @@ class CudaArray2D:
         
         #self.logger.debug("Allocating [%dx%d] buffer", self.nx, self.ny)
         #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
-        self.data = pycuda.gpuarray.empty((ny_halo, nx_halo), dtype)
+        self.data = pycuda.gpuarray.zeros((ny_halo, nx_halo), dtype)
         
         #If we don't have any data, just allocate and return
         if cpu_data is None:
@@ -310,5 +310,12 @@ class ArakawaA2D:
         stream.synchronize()
         return cpu_variables
         
-        
+    """
+    Checks that data is still sane
+    """
+    def check(self):
+        for i, gpu_variable in enumerate(self.gpu_variables):
+            var_sum = pycuda.gpuarray.sum(gpu_variable.data).get()
+            self.logger.debug("Data %d with size [%d x %d] has sum %f", i, gpu_variable.nx, gpu_variable.ny, var_sum)
+            assert np.isnan(var_sum) == False, "Data contains NaN values!"
     

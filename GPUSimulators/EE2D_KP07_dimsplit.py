@@ -57,7 +57,7 @@ class EE2D_KP07_dimsplit (Simulator.BaseSimulator):
                  dx, dy, dt, \
                  gamma, \
                  theta=1.3, \
-                 block_width=8, block_height=4):
+                 block_width=16, block_height=8):
                  
         # Call super constructor
         super().__init__(context, \
@@ -65,10 +65,8 @@ class EE2D_KP07_dimsplit (Simulator.BaseSimulator):
             dx, dy, dt, \
             block_width, block_height)
         self.gamma = np.float32(gamma)
-            
         self.theta = np.float32(theta)
 
-        #Get kernels
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/EE2D_KP07_dimsplit.cu", "KP07DimsplitKernel", \
                                         "iifffffiPiPiPiPiPiPiPiPi", \
@@ -136,3 +134,7 @@ class EE2D_KP07_dimsplit (Simulator.BaseSimulator):
         
     def download(self):
         return self.u0.download(self.stream)
+
+    def check(self):
+        self.u0.check()
+        self.u1.check()

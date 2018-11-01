@@ -122,6 +122,7 @@ class BaseSimulator:
                 if (t.elapsed() >= next_print):
                     self.logger.info("%s simulated %d of %d steps (Euler)", self, i, n)
                     next_print += self.log_every
+                    self.check()
     
             
         self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
@@ -153,6 +154,7 @@ class BaseSimulator:
                 if (t.elapsed() >= next_print):
                     self.logger.info("%s simulated %d of %d steps (RK2)", self, i, n)
                     next_print += self.log_every
+                    self.check()
             
         self.logger.info("%s simulated %f seconds to %f with %d steps (RK2)", self, t_end, self.t, n)
         return self.t, n
@@ -184,6 +186,7 @@ class BaseSimulator:
                 if (t.elapsed() >= next_print):
                     self.logger.info("%s simulated %d of %d steps (Dimsplit)", self, i, n)
                     next_print += self.log_every
+                    self.check()
             
         self.logger.info("%s simulated %f seconds to %f with %d steps (Dimsplit)", self, t_end, self.t, 2*n)
         return self.t, 2*n
@@ -203,13 +206,17 @@ class BaseSimulator:
         
     def stepDimsplitYX(self, dt):
         raise(NotImplementedError("Needs to be implemented in subclass"))
-        
-    def sim_time(self):
-        return self.t
 
     def download(self):
         raise(NotImplementedError("Needs to be implemented in subclass"))
+
+    def check(self):
+        raise(NotImplementedError("Needs to be implemented in subclass"))
+        
+    def sim_time(self):
+        return self.t
         
     def synchronize(self):
         self.stream.synchronize()
 
+        

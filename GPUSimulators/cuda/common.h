@@ -151,86 +151,91 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
 
 template<int block_width, int block_height, int ghost_cells, int scale_east_west=1, int scale_north_south=1>
 __device__ void noFlowBoundary(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
-    const int ti = blockDim.x*blockIdx.x + threadIdx.x + ghost_cells;
-    const int tj = blockDim.y*blockIdx.y + threadIdx.y + ghost_cells;
     
-    const int i = threadIdx.x + ghost_cells;
-    const int j = threadIdx.y + ghost_cells;
-    
-    
-    // West boundary
-    if (ti == ghost_cells) {
-        Q[j][i-1] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 2 && ti == ghost_cells + 1) {
-        Q[j][i-3] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 3 && ti == ghost_cells + 2) {
-        Q[j][i-5] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 4 && ti == ghost_cells + 3) {
-        Q[j][i-7] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 5 && ti == ghost_cells + 4) {
-        Q[j][i-9] = scale_east_west*Q[j][i];
-    }
-    
-    
-    
-    // East boundary
-    if (ti == nx_ + ghost_cells - 1) {
-        Q[j][i+1] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 2 && ti == nx_ + ghost_cells - 2) {
-        Q[j][i+3] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 3 && ti == nx_ + ghost_cells - 3) {
-        Q[j][i+5] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 3 && ti == nx_ + ghost_cells - 4) {
-        Q[j][i+7] = scale_east_west*Q[j][i];
-    }
-    if (ghost_cells >= 3 && ti == nx_ + ghost_cells - 5) {
-        Q[j][i+9] = scale_east_west*Q[j][i];
-    }
-    
-    
-    
-    
-    // South boundary
-    if (tj == ghost_cells) {
-        Q[j-1][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 2 && tj == ghost_cells + 1) {
-        Q[j-3][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 3 && tj == ghost_cells + 2) {
-        Q[j-5][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 4 && tj == ghost_cells + 3) {
-        Q[j-7][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 5 && tj == ghost_cells + 4) {
-        Q[j-9][i] = scale_north_south*Q[j][i];
+    for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+= block_height) {
+        const int i = threadIdx.x + ghost_cells;
+        const int ti = blockDim.x*blockIdx.x + i;
+        const int tj = blockDim.y*blockIdx.y + j;
+        
+        // West boundary
+        if (ti == ghost_cells) {
+            Q[j][i-1] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 2 && ti == ghost_cells + 1) {
+            Q[j][i-3] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 3 && ti == ghost_cells + 2) {
+            Q[j][i-5] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 4 && ti == ghost_cells + 3) {
+            Q[j][i-7] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 5 && ti == ghost_cells + 4) {
+            Q[j][i-9] = scale_east_west*Q[j][i];
+        }
+        
+        
+        
+        // East boundary
+        if (ti == nx_ + ghost_cells - 1) {
+            Q[j][i+1] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 2 && ti == nx_ + ghost_cells - 2) {
+            Q[j][i+3] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 3 && ti == nx_ + ghost_cells - 3) {
+            Q[j][i+5] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 4 && ti == nx_ + ghost_cells - 4) {
+            Q[j][i+7] = scale_east_west*Q[j][i];
+        }
+        if (ghost_cells >= 5 && ti == nx_ + ghost_cells - 5) {
+            Q[j][i+9] = scale_east_west*Q[j][i];
+        }
     }
     
     
-    
-    // North boundary
-    if (tj == ny_ + ghost_cells - 1) {
-        Q[j+1][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 2 && tj == ny_ + ghost_cells - 2) {
-        Q[j+3][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 3 && tj == ny_ + ghost_cells - 3) {
-        Q[j+5][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 3 && tj == ny_ + ghost_cells - 4) {
-        Q[j+7][i] = scale_north_south*Q[j][i];
-    }
-    if (ghost_cells >= 3 && tj == ny_ + ghost_cells - 5) {
-        Q[j+9][i] = scale_north_south*Q[j][i];
+
+    for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+= block_width) {
+        const int j = threadIdx.y + ghost_cells;
+        const int ti = blockDim.x*blockIdx.x + i;
+        const int tj = blockDim.y*blockIdx.y + j;
+
+        // South boundary
+        if (tj == ghost_cells) {
+            Q[j-1][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 2 && tj == ghost_cells + 1) {
+            Q[j-3][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 3 && tj == ghost_cells + 2) {
+            Q[j-5][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 4 && tj == ghost_cells + 3) {
+            Q[j-7][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 5 && tj == ghost_cells + 4) {
+            Q[j-9][i] = scale_north_south*Q[j][i];
+        }
+        
+        
+        
+        // North boundary
+        if (tj == ny_ + ghost_cells - 1) {
+            Q[j+1][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 2 && tj == ny_ + ghost_cells - 2) {
+            Q[j+3][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 3 && tj == ny_ + ghost_cells - 3) {
+            Q[j+5][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 4 && tj == ny_ + ghost_cells - 4) {
+            Q[j+7][i] = scale_north_south*Q[j][i];
+        }
+        if (ghost_cells >= 5 && tj == ny_ + ghost_cells - 5) {
+            Q[j+9][i] = scale_north_south*Q[j][i];
+        }
     }
 }
 
@@ -247,21 +252,14 @@ __device__ void noFlowBoundary(float Q[block_height+2*ghost_cells][block_width+2
 
 template<int block_width, int block_height, int ghost_cells, int vars>
 __device__ void evolveF(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
-              float F[vars][block_height+1][block_width+1],
+              float F[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
               const float dx_, const float dt_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-        
-    const int i = tx + ghost_cells; //Skip local ghost cells
-    const int j = ty + ghost_cells;
-    
-    //Index of cell within domain
-    //const int ti = blockDim.x*blockIdx.x + threadIdx.x + ghost_cells; //Skip global ghost cells, i.e., +1
-    //const int tj = blockDim.y*blockIdx.y + threadIdx.y + ghost_cells;
-    //if (ti > ghost_cells-1 && ti < nx_+ghost_cells && tj > ghost_cells-1 && tj < ny_+ghost_cells) {
     for (int var=0; var < vars; ++var) {
-        Q[var][j][i] = Q[var][j][i] + (F[var][ty][tx] - F[var][ty][tx+1]) * dt_ / dx_;
+        for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
+            for (int i=threadIdx.x+1; i<block_width+2*ghost_cells; i+=block_width) {
+                Q[var][j][i] = Q[var][j][i] + (F[var][j][i-1] - F[var][j][i]) * dt_ / dx_;
+            }
+        }
     }
 }
 
@@ -275,17 +273,14 @@ __device__ void evolveF(float Q[vars][block_height+2*ghost_cells][block_width+2*
   */
 template<int block_width, int block_height, int ghost_cells, int vars>
 __device__ void evolveG(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
-              float G[vars][block_height+1][block_width+1],
+              float G[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
               const float dy_, const float dt_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    const int i = tx + ghost_cells; //Skip local ghost cells, i.e., +1
-    const int j = ty + ghost_cells;
-    
     for (int var=0; var < vars; ++var) {
-        Q[var][j][i] = Q[var][j][i] + (G[var][ty][tx] - G[var][ty+1][tx]) * dt_ / dy_;
+        for (int j=threadIdx.y+1; j<block_height+2*ghost_cells; j+=block_height) {
+            for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
+                Q[var][j][i] = Q[var][j][i] + (G[var][j-1][i] - G[var][j][i]) * dt_ / dy_;
+            }
+        }
     }
 }
 
@@ -306,6 +301,7 @@ __device__ void memset(float Q[vars][shmem_height][shmem_width], float value) {
         }
     }
 } 
+
 
 
 

@@ -47,21 +47,15 @@ __device__ __inline__ float minmodSlope(float left, float center, float right, f
   * Reconstructs a minmod slope for a whole block along the abscissa
   */
 template<int block_width, int block_height, int ghost_cells, int vars>
-__device__ void minmodSlopeX(float  Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
-                  float Qx[vars][block_height+2*(ghost_cells-1)][block_width+2*(ghost_cells-1)],
+__device__ void minmodSlopeX(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
+                  float Qx[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
                   const float theta_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    const int j = ty;
-    const int l = j + ghost_cells; //Skip ghost cells
-
     //Reconstruct slopes along x axis
-    for (int i=tx; i<block_width+2*(ghost_cells-1); i+=block_width) {
-        const int k = i + 1;
-        for (int p=0; p<vars; ++p) {
-            Qx[p][j][i] = minmodSlope(Q[p][l][k-1], Q[p][l][k], Q[p][l][k+1], theta_);
+    for (int p=0; p<vars; ++p) {
+        for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
+            for (int i=threadIdx.x+1; i<block_width+3; i+=block_width) {
+                Qx[p][j][i] = minmodSlope(Q[p][j][i-1], Q[p][j][i], Q[p][j][i+1], theta_);
+            }
         }
     }
 }
@@ -71,21 +65,15 @@ __device__ void minmodSlopeX(float  Q[vars][block_height+2*ghost_cells][block_wi
   * Reconstructs a minmod slope for a whole block along the ordinate
   */
 template<int block_width, int block_height, int ghost_cells, int vars>
-__device__ void minmodSlopeY(float  Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
-                  float Qy[vars][block_height+2*(ghost_cells-1)][block_width+2*(ghost_cells-1)],
+__device__ void minmodSlopeY(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
+                  float Qy[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
                   const float theta_) {
-    //Index of thread within block
-    const int tx = threadIdx.x;
-    const int ty = threadIdx.y;
-    
-    const int i = tx;
-    const int k = i + ghost_cells; //Skip ghost cells
-
     //Reconstruct slopes along y axis
-    for (int j=ty; j<block_height+2*(ghost_cells-1); j+=block_height) {
-        const int l = j + 1;
-        for (int p=0; p<vars; ++p) {
-            Qy[p][j][i] = minmodSlope(Q[p][l-1][k], Q[p][l][k], Q[p][l+1][k], theta_);
+    for (int p=0; p<vars; ++p) {
+        for (int j=threadIdx.y+1; j<block_height+3; j+=block_height) {
+            for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
+                Qy[p][j][i] = minmodSlope(Q[p][j-1][i], Q[p][j][i], Q[p][j+1][i], theta_);
+            }
         }
     }
 }

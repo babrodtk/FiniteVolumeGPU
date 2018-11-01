@@ -27,94 +27,92 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __device__
 void computeFluxF(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float Qx[4][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float F[4][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
-                  const float gamma_, const float dx_, const float dt_) {    
-    int j=threadIdx.y;
-    const int l = j + 2; //Skip ghost cells
-    for (int i=threadIdx.x; i<BLOCK_WIDTH+1; i+=BLOCK_WIDTH) {
-        const int k = i + 1;
-        // Reconstruct point values of Q at the left and right hand side 
-        // of the cell for both the left (i) and right (i+1) cell 
-        const float4 Q_rl = make_float4(Q[0][l][k+1] - 0.5f*Qx[0][j][i+1],
-                                        Q[1][l][k+1] - 0.5f*Qx[1][j][i+1],
-                                        Q[2][l][k+1] - 0.5f*Qx[2][j][i+1],
-                                        Q[3][l][k+1] - 0.5f*Qx[3][j][i+1]);
-        const float4 Q_rr = make_float4(Q[0][l][k+1] + 0.5f*Qx[0][j][i+1],
-                                        Q[1][l][k+1] + 0.5f*Qx[1][j][i+1],
-                                        Q[2][l][k+1] + 0.5f*Qx[2][j][i+1],
-                                        Q[3][l][k+1] + 0.5f*Qx[3][j][i+1]);
-                                     
-        const float4 Q_ll = make_float4(Q[0][l][k] - 0.5f*Qx[0][j][i],
-                                        Q[1][l][k] - 0.5f*Qx[1][j][i],
-                                        Q[2][l][k] - 0.5f*Qx[2][j][i],
-                                        Q[3][l][k] - 0.5f*Qx[3][j][i]);
-        const float4 Q_lr = make_float4(Q[0][l][k] + 0.5f*Qx[0][j][i],
-                                        Q[1][l][k] + 0.5f*Qx[1][j][i],
-                                        Q[2][l][k] + 0.5f*Qx[2][j][i],
-                                        Q[3][l][k] + 0.5f*Qx[3][j][i]);
-                                
-        //Evolve half a timestep (predictor step)
-        const float4 Q_r_bar = Q_rl + dt_/(2.0f*dx_) * (F_func(Q_rl, gamma_) - F_func(Q_rr, gamma_));
-        const float4 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, gamma_) - F_func(Q_lr, gamma_));
+                  float Qx[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float F[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  const float gamma_, const float dx_, const float dt_) {
+    for (int j=threadIdx.y; j<BLOCK_HEIGHT+4; j+=BLOCK_HEIGHT) {
+        for (int i=threadIdx.x+1; i<BLOCK_WIDTH+2; i+=BLOCK_WIDTH) {
+            // Reconstruct point values of Q at the left and right hand side 
+            // of the cell for both the left (i) and right (i+1) cell 
+            const float4 Q_rl = make_float4(Q[0][j][i+1] - 0.5f*Qx[0][j][i+1],
+                                            Q[1][j][i+1] - 0.5f*Qx[1][j][i+1],
+                                            Q[2][j][i+1] - 0.5f*Qx[2][j][i+1],
+                                            Q[3][j][i+1] - 0.5f*Qx[3][j][i+1]);
+            const float4 Q_rr = make_float4(Q[0][j][i+1] + 0.5f*Qx[0][j][i+1],
+                                            Q[1][j][i+1] + 0.5f*Qx[1][j][i+1],
+                                            Q[2][j][i+1] + 0.5f*Qx[2][j][i+1],
+                                            Q[3][j][i+1] + 0.5f*Qx[3][j][i+1]);
 
-        // Compute flux based on prediction
-        const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
-        
-        //Write to shared memory
-        F[0][j][i] = flux.x;
-        F[1][j][i] = flux.y;
-        F[2][j][i] = flux.z;
-        F[3][j][i] = flux.w;
+            const float4 Q_ll = make_float4(Q[0][j][i] - 0.5f*Qx[0][j][i],
+                                            Q[1][j][i] - 0.5f*Qx[1][j][i],
+                                            Q[2][j][i] - 0.5f*Qx[2][j][i],
+                                            Q[3][j][i] - 0.5f*Qx[3][j][i]);
+            const float4 Q_lr = make_float4(Q[0][j][i] + 0.5f*Qx[0][j][i],
+                                            Q[1][j][i] + 0.5f*Qx[1][j][i],
+                                            Q[2][j][i] + 0.5f*Qx[2][j][i],
+                                            Q[3][j][i] + 0.5f*Qx[3][j][i]);
+
+
+            //Evolve half a timestep (predictor step)
+            const float4 Q_r_bar = Q_rl + dt_/(2.0f*dx_) * (F_func(Q_rl, gamma_) - F_func(Q_rr, gamma_));
+            const float4 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, gamma_) - F_func(Q_lr, gamma_));
+
+            // Compute flux based on prediction
+            const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
+            
+            //Write to shared memory
+            F[0][j][i] = flux.x;
+            F[1][j][i] = flux.y;
+            F[2][j][i] = flux.z;
+            F[3][j][i] = flux.w;
+        }
     }
 }
 
 __device__
 void computeFluxG(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float Qy[4][BLOCK_HEIGHT+2][BLOCK_WIDTH+2],
-                  float G[4][BLOCK_HEIGHT+1][BLOCK_WIDTH+1],
-                  const float gamma_, const float dy_, const float dt_) {    
-    int i=threadIdx.x;
-    const int k = i + 2; //Skip ghost cells
-    for (int j=threadIdx.y; j<BLOCK_HEIGHT+1; j+=BLOCK_HEIGHT) {
-        const int l = j + 1;
-        // Reconstruct point values of Q at the left and right hand side 
-        // of the cell for both the left (i) and right (i+1) cell 
-        //NOte that hu and hv are swapped ("transposing" the domain)!
-        const float4 Q_rl = make_float4(Q[0][l+1][k] - 0.5f*Qy[0][j+1][i],
-                                        Q[2][l+1][k] - 0.5f*Qy[2][j+1][i],
-                                        Q[1][l+1][k] - 0.5f*Qy[1][j+1][i],
-                                        Q[3][l+1][k] - 0.5f*Qy[3][j+1][i]);
-        const float4 Q_rr = make_float4(Q[0][l+1][k] + 0.5f*Qy[0][j+1][i],
-                                        Q[2][l+1][k] + 0.5f*Qy[2][j+1][i],
-                                        Q[1][l+1][k] + 0.5f*Qy[1][j+1][i],
-                                        Q[3][l+1][k] + 0.5f*Qy[3][j+1][i]);
+                  float Qy[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  float G[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+                  const float gamma_, const float dy_, const float dt_) {
+    for (int j=threadIdx.y+1; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
+        for (int i=threadIdx.x; i<BLOCK_WIDTH+4; i+=BLOCK_WIDTH) {
+            // Reconstruct point values of Q at the left and right hand side 
+            // of the cell for both the left (i) and right (i+1) cell 
+            //NOte that hu and hv are swapped ("transposing" the domain)!
+            const float4 Q_rl = make_float4(Q[0][j+1][i] - 0.5f*Qy[0][j+1][i],
+                                            Q[2][j+1][i] - 0.5f*Qy[2][j+1][i],
+                                            Q[1][j+1][i] - 0.5f*Qy[1][j+1][i],
+                                            Q[3][j+1][i] - 0.5f*Qy[3][j+1][i]);
+            const float4 Q_rr = make_float4(Q[0][j+1][i] + 0.5f*Qy[0][j+1][i],
+                                            Q[2][j+1][i] + 0.5f*Qy[2][j+1][i],
+                                            Q[1][j+1][i] + 0.5f*Qy[1][j+1][i],
+                                            Q[3][j+1][i] + 0.5f*Qy[3][j+1][i]);
 
-        const float4 Q_ll = make_float4(Q[0][l][k] - 0.5f*Qy[0][j][i],
-                                        Q[2][l][k] - 0.5f*Qy[2][j][i],
-                                        Q[1][l][k] - 0.5f*Qy[1][j][i],
-                                        Q[3][l][k] - 0.5f*Qy[3][j][i]);
-        const float4 Q_lr = make_float4(Q[0][l][k] + 0.5f*Qy[0][j][i],
-                                        Q[2][l][k] + 0.5f*Qy[2][j][i],
-                                        Q[1][l][k] + 0.5f*Qy[1][j][i],
-                                        Q[3][l][k] + 0.5f*Qy[3][j][i]);
+            const float4 Q_ll = make_float4(Q[0][j][i] - 0.5f*Qy[0][j][i],
+                                            Q[2][j][i] - 0.5f*Qy[2][j][i],
+                                            Q[1][j][i] - 0.5f*Qy[1][j][i],
+                                            Q[3][j][i] - 0.5f*Qy[3][j][i]);
+            const float4 Q_lr = make_float4(Q[0][j][i] + 0.5f*Qy[0][j][i],
+                                            Q[2][j][i] + 0.5f*Qy[2][j][i],
+                                            Q[1][j][i] + 0.5f*Qy[1][j][i],
+                                            Q[3][j][i] + 0.5f*Qy[3][j][i]);
 
-        //Evolve half a timestep (predictor step)
-        const float4 Q_r_bar = Q_rl + dt_/(2.0f*dy_) * (F_func(Q_rl, gamma_) - F_func(Q_rr, gamma_));
-        const float4 Q_l_bar = Q_lr + dt_/(2.0f*dy_) * (F_func(Q_ll, gamma_) - F_func(Q_lr, gamma_));
-        
-        // Compute flux based on prediction
-        const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
-        
-        //Write to shared memory
-        //Note that we here swap hu and hv back to the original
-        G[0][j][i] = flux.x;
-        G[1][j][i] = flux.z;
-        G[2][j][i] = flux.y;
-        G[3][j][i] = flux.w;
+            //Evolve half a timestep (predictor step)
+            const float4 Q_r_bar = Q_rl + dt_/(2.0f*dy_) * (F_func(Q_rl, gamma_) - F_func(Q_rr, gamma_));
+            const float4 Q_l_bar = Q_lr + dt_/(2.0f*dy_) * (F_func(Q_ll, gamma_) - F_func(Q_lr, gamma_));
+            
+            // Compute flux based on prediction
+            const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
+            
+            //Write to shared memory
+            //Note that we here swap hu and hv back to the original
+            G[0][j][i] = flux.x;
+            G[1][j][i] = flux.z;
+            G[2][j][i] = flux.y;
+            G[3][j][i] = flux.w;
+        }
     }
 }
-
 
 
 
@@ -150,8 +148,8 @@ __global__ void KP07DimsplitKernel(
         
     //Shared memory variables
     __shared__ float  Q[4][h+4][w+4];
-    __shared__ float Qx[4][h+2][w+2];
-    __shared__ float  F[4][h+1][w+1];
+    __shared__ float Qx[4][h+4][w+4];
+    __shared__ float  F[4][h+4][w+4];
     
     
     
@@ -162,14 +160,12 @@ __global__ void KP07DimsplitKernel(
     readBlock<w, h, gc>(    E0_ptr_,     E0_pitch_, Q[3], nx_+4, ny_+4);
     __syncthreads();
     
-    
     //Fix boundary conditions
     noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+    noFlowBoundary<w, h, gc,  1,  1>(Q[1], nx_, ny_);
     noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
     noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
     __syncthreads();
-    
 
 
     //Step 0 => evolve x first, then y
@@ -186,11 +182,10 @@ __global__ void KP07DimsplitKernel(
 
         //Set boundary conditions
         noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+        noFlowBoundary<w, h, gc,  1,  1>(Q[1], nx_, ny_);
         noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
         __syncthreads();
-
 
         //Compute fluxes along the y axis and evolve
         minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
@@ -200,7 +195,7 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();
 
         evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
-        __syncthreads();
+        __syncthreads();    
 
     }
     //Step 1 => evolve y first, then x
@@ -208,14 +203,16 @@ __global__ void KP07DimsplitKernel(
         //Compute fluxes along the y axis and evolve
         minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
+  
         computeFluxG(Q, Qx, F, gamma_, dy_, dt_);
         __syncthreads();
+  
         evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
         __syncthreads();
-        
+  
         //Set boundary conditions
         noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
+        noFlowBoundary<w, h, gc,  1,  1>(Q[1], nx_, ny_);
         noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
         __syncthreads();
@@ -223,8 +220,10 @@ __global__ void KP07DimsplitKernel(
         //Compute fluxes along the x axis and evolve
         minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
+
         computeFluxF(Q, Qx, F, gamma_, dx_, dt_);
         __syncthreads();
+
         evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
         __syncthreads();
     }
