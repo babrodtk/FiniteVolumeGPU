@@ -154,10 +154,10 @@ __global__ void KP07DimsplitKernel(
     
     
     //Read into shared memory
-    readBlock<w, h, gc>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_+4, ny_+4);
-    readBlock<w, h, gc>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_+4, ny_+4);
-    readBlock<w, h, gc>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_+4, ny_+4);
-    readBlock<w, h, gc>(    E0_ptr_,     E0_pitch_, Q[3], nx_+4, ny_+4);
+    readBlock<w, h, gc>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_);
+    readBlock<w, h, gc>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_);
+    readBlock<w, h, gc>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_);
+    readBlock<w, h, gc>(    E0_ptr_,     E0_pitch_, Q[3], nx_, ny_);
     __syncthreads();
     
     //Fix boundary conditions
@@ -226,6 +226,26 @@ __global__ void KP07DimsplitKernel(
 
         evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
         __syncthreads();
+        
+        //This is the RK2-part
+        const int tx = threadIdx.x + gc;
+        const int ty = threadIdx.y + gc;
+        const float q1 = Q[0][ty][tx];
+        const float q2 = Q[1][ty][tx];
+        const float q3 = Q[2][ty][tx];
+        const float q4 = Q[3][ty][tx];
+        __syncthreads();
+        
+        readBlock<w, h, gc>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_);
+        readBlock<w, h, gc>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_);
+        readBlock<w, h, gc>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_);
+        readBlock<w, h, gc>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_);
+        __syncthreads();
+        
+        Q[0][ty][tx] = 0.5f*( Q[0][ty][tx] + q1 );
+        Q[1][ty][tx] = 0.5f*( Q[1][ty][tx] + q2 );
+        Q[2][ty][tx] = 0.5f*( Q[2][ty][tx] + q3 );
+        Q[3][ty][tx] = 0.5f*( Q[3][ty][tx] + q4 );
     }
 
     

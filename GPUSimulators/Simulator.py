@@ -80,8 +80,9 @@ class BaseSimulator:
         #Create a CUDA stream
         self.stream = cuda.Stream()
         
-        #Keep track of simulation time
-        self.t = 0.0;
+        #Keep track of simulation time and number of timesteps
+        self.t = 0.0
+        self.nt = 0
 
         #Log progress every n seconds during simulation
         self.log_every = 5
@@ -209,14 +210,16 @@ class BaseSimulator:
 
     def download(self):
         raise(NotImplementedError("Needs to be implemented in subclass"))
-
-    def check(self):
-        raise(NotImplementedError("Needs to be implemented in subclass"))
-        
-    def sim_time(self):
-        return self.t
         
     def synchronize(self):
         self.stream.synchronize()
 
+    def check(self):
+        raise(NotImplementedError("Needs to be implemented in subclass"))
+        
+    def simTime(self):
+        return self.t
+
+    def simSteps(self):
+        return self.nt
         

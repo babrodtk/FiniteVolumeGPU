@@ -110,6 +110,7 @@ class KP07 (Simulator.BaseSimulator):
     def stepEuler(self, dt):
         self.substepRK(dt, 0)
         self.t += dt
+        self.nt += 1
         
     def stepRK(self, dt, order):
         if (order != 2):
@@ -117,6 +118,7 @@ class KP07 (Simulator.BaseSimulator):
         self.substepRK(dt, 0)
         self.substepRK(dt, 1)
         self.t += dt
+        self.nt += 1
     
     def download(self):
         return self.u0.download(self.stream)

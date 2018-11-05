@@ -92,19 +92,29 @@ __device__ float desingularize(float x_, float eps_) {
 template<int block_width, int block_height, int ghost_cells>
 inline __device__ void readBlock(float* ptr_, int pitch_,
                 float shmem[block_height+2*ghost_cells][block_width+2*ghost_cells], 
-                const int max_x_, const int max_y_) {
+                const int nx_, const int ny_) {
     //Index of block within domain
     const int bx = blockDim.x * blockIdx.x;
     const int by = blockDim.y * blockIdx.y;
-        
+
+    const int gc_pad = 4;
+    
     //Read into shared memory
     //Loop over all variables
     for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
-        const int l = min(by + j, max_y_-1);
+        //const int l = min(by + j, ny_+2*ghost_cells-1);
+        const int y = by + j;
+        const int y_offset = ( (int) (y < gc_pad) - (int) (y >= ny_+2*ghost_cells-gc_pad) ) * (ny_+2*ghost_cells - 2*gc_pad); 
+        const int l = y + y_offset;
         float* row = (float*) ((char*) ptr_  + pitch_*l);
         
         for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
-            const int k = min(bx + i, max_x_-1);
+            //const int k = min(bx + i, nx_+2*ghost_cells-1);
+            
+            const int x = bx + i;
+            const int gc_pad = 4;
+            const int x_offset = ( (int) (x < gc_pad) - (int) (x >= nx_+2*ghost_cells-gc_pad) ) * (nx_+2*ghost_cells - 2*gc_pad); 
+            const int k = x + x_offset;
             
             shmem[j][i] = row[k];
         }
@@ -238,6 +248,16 @@ __device__ void noFlowBoundary(float Q[block_height+2*ghost_cells][block_width+2
         }
     }
 }
+
+
+
+
+
+
+
+
+
+
 
 
 

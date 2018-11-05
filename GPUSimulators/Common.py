@@ -29,16 +29,17 @@ import io
 import hashlib
 import logging
 import gc
+import netCDF4
 
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
 import pycuda.driver as cuda
 
 
-"""
-Class which keeps track of time spent for a section of code
-"""
 class Timer(object):
+    """
+    Class which keeps track of time spent for a section of code
+    """
     def __init__(self, tag, log_level=logging.DEBUG):
         self.tag = tag
         self.log_level = log_level
@@ -63,9 +64,116 @@ class Timer(object):
         
 
 
+class DataDumper(object):
+    """
+    Simple class for holding a netCDF4 object
+    (handles opening and closing in a nice way)
+    Use as 
+    with DataDumper("filename") as data:
+        ...
+    """
+    def __init__(self, filename, *args, **kwargs):
+        self.logger = logging.getLogger(__name__)
+        
+        #Create directory if needed
+        dirname = os.path.dirname(filename)
+        if not os.path.isdir(dirname):
+            self.logger.info("Creating directory " + dirname)
+            os.makedirs(dirname)
+        
+        #Get mode of file if we have that
+        mode = None
+        if (args):
+            mode = args[0]
+        elif (kwargs and 'mode' in kwargs.keys()):
+            mode = kwargs['mode']
+            
+        #Create new unique file if writing
+        if (mode):
+            if (("w" in mode) or ("+" in mode) or ("a" in mode)):
+                i = 0
+                stem, ext = os.path.splitext(filename)
+                while (os.path.isfile(filename)):
+                    filename = "{:s}_{:04d}{:s}".format(stem, i, ext)
+                    i = i+1
+        self.filename = os.path.abspath(filename)
+        
+        #Save arguments
+        self.args = args
+        self.kwargs = kwargs
+                
+        #Log output
+        self.logger.info("Writing output to " + self.filename)
+        
+        
+    def __enter__(self):
+        self.logger.info("Opening " + self.filename)
+        if (self.args):
+            self.logger.info("Arguments: " + str(self.args))
+        if (self.kwargs):
+            self.logger.info("Keyword arguments: " + str(self.kwargs))
+        self.ncfile = netCDF4.Dataset(self.filename, *self.args, **self.kwargs)
+        return self
+        
+    def __exit__(self, *args):
+        self.logger.info("Closing " + self.filename)
+        self.ncfile.close()
 
 
+        
+        
+class ProgressPrinter(object):
+    """
+    Small helper class for 
+    """
+    def __init__(self, total_steps, print_every=5):
+        self.logger = logging.getLogger(__name__)
+        self.start = time.time()
+        self.total_steps = total_steps
+        self.print_every = print_every
+        self.next_print_time = self.print_every
+        self.last_step = 0
+        self.secs_per_iter = None
+        
+    def getPrintString(self, step):
+        elapsed =  time.time() - self.start
+        if (elapsed > self.next_print_time):            
+            dt = elapsed - (self.next_print_time - self.print_every)
+            dsteps = step - self.last_step
+            steps_remaining = self.total_steps - step
+                        
+            if (dsteps == 0):
+                return
+                
+            self.last_step = step
+            self.next_print_time = elapsed + self.print_every
+            
+            if not self.secs_per_iter:
+                self.secs_per_iter = dt / dsteps
+            self.secs_per_iter = 0.2*self.secs_per_iter + 0.8*(dt / dsteps)
+            
+            remaining_time = steps_remaining * self.secs_per_iter
 
+            return "{:s}. Total: {:s}, elapsed: {:s}, remaining: {:s}".format(
+                ProgressPrinter.progressBar(step, self.total_steps), 
+                ProgressPrinter.timeString(elapsed + remaining_time), 
+                ProgressPrinter.timeString(elapsed), 
+                ProgressPrinter.timeString(remaining_time))
+
+    def timeString(seconds):
+        seconds = int(max(seconds, 1))
+        minutes, seconds = divmod(seconds, 60)
+        hours, minutes = divmod(minutes, 60)
+        periods = [('h', hours), ('m', minutes), ('s', seconds)]
+        time_string = ' '.join('{}{}'.format(value, name)
+                                for name, value in periods
+                                if value)
+        return time_string
+
+    def progressBar(step, total_steps, width=30):
+        progress = np.round(width * step / total_steps).astype(np.int32)
+        progressbar = "0% [" + "#"*(progress) + "="*(width-progress) + "] 100%"
+        return progressbar
 
 
 

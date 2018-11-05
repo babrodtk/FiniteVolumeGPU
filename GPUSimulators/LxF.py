@@ -101,6 +101,7 @@ class LxF (Simulator.BaseSimulator):
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
         self.t += dt
+        self.nt += 1
   
     def download(self):
         return self.u0.download(self.stream)
