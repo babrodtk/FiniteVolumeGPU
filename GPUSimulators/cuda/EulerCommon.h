@@ -57,6 +57,59 @@ __device__ float4 F_func(const float4 Q, float P) {
 
 
 
+/**
+  * Harten-Lax-van Leer with contact discontinuity (Toro 2001, p 180)
+  */
+__device__ float4 HLL_flux(const float4 Q_l, const float4 Q_r, const float gamma) {
+    const float h_l = Q_l.x;
+    const float h_r = Q_r.x;
+    
+    // Calculate velocities
+    const float u_l = Q_l.y / h_l;
+    const float u_r = Q_r.y / h_r;
+    
+    // Calculate pressures
+    const float P_l = pressure(Q_l, gamma);
+    const float P_r = pressure(Q_r, gamma);
+    
+    // Estimate the potential wave speeds
+    const float c_l = sqrt(gamma*P_l/Q_l.x);
+    const float c_r = sqrt(gamma*P_r/Q_r.x);
+    
+    // Compute h in the "star region", h^dagger
+    const float h_dag = 0.5f * (h_l+h_r) - 0.25f * (u_r-u_l)*(h_l+h_r)/(c_l+c_r);
+    
+    const float q_l_tmp = sqrt(0.5f * ( (h_dag+h_l)*h_dag / (h_l*h_l) ) );
+    const float q_r_tmp = sqrt(0.5f * ( (h_dag+h_r)*h_dag / (h_r*h_r) ) );
+    
+    const float q_l = (h_dag > h_l) ? q_l_tmp : 1.0f;
+    const float q_r = (h_dag > h_r) ? q_r_tmp : 1.0f;
+    
+    // Compute wave speed estimates
+    const float S_l = u_l - c_l*q_l;
+    const float S_r = u_r + c_r*q_r;
+    
+    //Upwind selection
+    if (S_l >= 0.0f) {
+        return F_func(Q_l, P_l);
+    }
+    else if (S_r <= 0.0f) {
+        return F_func(Q_r, P_r);
+    }
+    //Or estimate flux in the star region
+    else {
+        const float4 F_l = F_func(Q_l, P_l);
+        const float4 F_r = F_func(Q_r, P_r);
+        const float4 flux = (S_r*F_l - S_l*F_r + S_r*S_l*(Q_r - Q_l)) / (S_r-S_l);
+        return flux;
+    }
+}
+
+
+
+
+
+
 
 /**
   * Central upwind flux function

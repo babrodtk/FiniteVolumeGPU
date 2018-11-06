@@ -83,9 +83,6 @@ class BaseSimulator:
         #Keep track of simulation time and number of timesteps
         self.t = 0.0
         self.nt = 0
-
-        #Log progress every n seconds during simulation
-        self.log_every = 5
         
                       
     def __str__(self):
@@ -102,31 +99,30 @@ class BaseSimulator:
     Requires that the stepEuler functionality is implemented in the subclasses
     """
     def simulateEuler(self, t_end):
-        with Common.Timer(self.__class__.__name__ + ".simulateEuler") as t:
-            # Compute number of timesteps to perform
-            n = int(t_end / self.dt + 1)
+        # Compute number of timesteps to perform
+        n = int(t_end / self.dt + 1)
 
-            next_print = self.log_every
+        printer = Common.ProgressPrinter(n)
+        
+        for i in range(0, n):
+            # Compute timestep for "this" iteration
+            local_dt = np.float32(min(self.dt, t_end-i*self.dt))
             
-            for i in range(0, n):
-                # Compute timestep for "this" iteration
-                local_dt = np.float32(min(self.dt, t_end-i*self.dt))
-                
-                # Stop if end reached (should not happen)
-                if (local_dt <= 0.0):
-                    break
-            
-                # Step with forward Euler 
-                self.stepEuler(local_dt)
+            # Stop if end reached (should not happen)
+            if (local_dt <= 0.0):
+                break
+        
+            # Step with forward Euler 
+            self.stepEuler(local_dt)
 
-                #Print info
-                if (t.elapsed() >= next_print):
-                    self.logger.info("%s simulated %d of %d steps (Euler)", self, i, n)
-                    next_print += self.log_every
-                    self.check()
+            #Print info
+            print_string = printer.getPrintString(i)
+            if (print_string):
+                self.logger.info("%s (Euler): %s", self, print_string)
+                self.check()
     
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
+        #self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
         return self.t, n
         
     """
@@ -134,30 +130,28 @@ class BaseSimulator:
     Requires that the stepRK functionality is implemented in the subclasses
     """
     def simulateRK(self, t_end, order):
-        with Common.Timer(self.__class__.__name__ + ".simulateRK") as t:
-            # Compute number of timesteps to perform
-            n = int(t_end / self.dt + 1)
+        # Compute number of timesteps to perform
+        n = int(t_end / self.dt + 1)
+        
+        printer = Common.ProgressPrinter(n)
+        
+        for i in range(0, n):
+            # Compute timestep for "this" iteration
+            local_dt = np.float32(min(self.dt, t_end-i*self.dt))
+            
+            # Stop if end reached (should not happen)
+            if (local_dt <= 0.0):
+                break
+        
+            # Perform all the Runge-Kutta substeps
+            self.stepRK(local_dt, order)
 
-            next_print = self.log_every
-            
-            for i in range(0, n):
-                # Compute timestep for "this" iteration
-                local_dt = np.float32(min(self.dt, t_end-i*self.dt))
-                
-                # Stop if end reached (should not happen)
-                if (local_dt <= 0.0):
-                    break
-            
-                # Perform all the Runge-Kutta substeps
-                self.stepRK(local_dt, order)
-
-                #Print info
-                if (t.elapsed() >= next_print):
-                    self.logger.info("%s simulated %d of %d steps (RK2)", self, i, n)
-                    next_print += self.log_every
-                    self.check()
-            
-        self.logger.info("%s simulated %f seconds to %f with %d steps (RK2)", self, t_end, self.t, n)
+            #Print info
+            print_string = printer.getPrintString(i)
+            if (print_string):
+                self.logger.info("%s (RK2): %s", self, print_string)
+                self.check()
+    
         return self.t, n
         
     """
@@ -165,31 +159,29 @@ class BaseSimulator:
     Requires that the stepDimsplitX and stepDimsplitY functionality is implemented in the subclasses
     """
     def simulateDimsplit(self, t_end):
-        with Common.Timer(self.__class__.__name__ + ".simulateDimsplit") as t:
-            # Compute number of timesteps to perform
-            n = int(t_end / (2.0*self.dt) + 1)
-            
-            next_print = self.log_every
+        # Compute number of timesteps to perform
+        n = int(t_end / (2.0*self.dt) + 1)
+        
+        printer = Common.ProgressPrinter(n)
 
-            for i in range(0, n):
-                # Compute timestep for "this" iteration
-                local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
-                
-                # Stop if end reached (should not happen)
-                if (local_dt <= 0.0):
-                    break
-                
-                # Perform the dimensional split substeps
-                self.stepDimsplitXY(local_dt)
-                self.stepDimsplitYX(local_dt)
-
-                #Print info
-                if (t.elapsed() >= next_print):
-                    self.logger.info("%s simulated %d of %d steps (Dimsplit)", self, i, n)
-                    next_print += self.log_every
-                    self.check()
+        for i in range(0, n):
+            # Compute timestep for "this" iteration
+            local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
             
-        self.logger.info("%s simulated %f seconds to %f with %d steps (Dimsplit)", self, t_end, self.t, 2*n)
+            # Stop if end reached (should not happen)
+            if (local_dt <= 0.0):
+                break
+            
+            # Perform the dimensional split substeps
+            self.stepDimsplitXY(local_dt)
+            self.stepDimsplitYX(local_dt)
+
+            #Print info
+            print_string = printer.getPrintString(i)
+            if (print_string):
+                self.logger.info("%s (Dimsplit): %s", self, print_string)
+                self.check()
+            
         return self.t, 2*n
         
     
