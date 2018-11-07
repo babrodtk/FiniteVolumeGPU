@@ -59,6 +59,7 @@ void computeFluxF(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
 
             // Compute flux based on prediction
             const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
+            //const float4 flux = HLL_flux(Q_l_bar, Q_r_bar, gamma_);
             
             //Write to shared memory
             F[0][j][i] = flux.x;
@@ -103,6 +104,7 @@ void computeFluxG(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
             
             // Compute flux based on prediction
             const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
+            //const float4 flux = HLL_flux(Q_l_bar, Q_r_bar, gamma_);
             
             //Write to shared memory
             //Note that we here swap hu and hv back to the original
@@ -162,10 +164,12 @@ __global__ void KP07DimsplitKernel(
     
     //Fix boundary conditions
     noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-    noFlowBoundary<w, h, gc,  1,  1>(Q[1], nx_, ny_);
+    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
     noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
     noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
     __syncthreads();
+    
+    const float g = 0.1f;
 
 
     //Step 0 => evolve x first, then y
@@ -182,7 +186,7 @@ __global__ void KP07DimsplitKernel(
 
         //Set boundary conditions
         noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1,  1>(Q[1], nx_, ny_);
+        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
         noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
         __syncthreads();
@@ -196,6 +200,16 @@ __global__ void KP07DimsplitKernel(
 
         evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
         __syncthreads();    
+        
+        //Gravity source term
+        {
+            const int i = threadIdx.x + gc;
+            const int j = threadIdx.y + gc;
+            const float rho_v = Q[2][j][i];
+            Q[2][j][i] -= g*Q[0][j][i]*dt_;
+            Q[3][j][i] -= g*rho_v*dt_;
+        }
+        __syncthreads();
 
     }
     //Step 1 => evolve y first, then x
@@ -212,7 +226,7 @@ __global__ void KP07DimsplitKernel(
   
         //Set boundary conditions
         noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1,  1>(Q[1], nx_, ny_);
+        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
         noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
         __syncthreads();
@@ -225,6 +239,16 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();
 
         evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        __syncthreads();
+        
+        //Gravity source term
+        {
+            const int i = threadIdx.x + gc;
+            const int j = threadIdx.y + gc;
+            const float rho_v = Q[2][j][i];
+            Q[2][j][i] -= g*Q[0][j][i]*dt_;
+            Q[3][j][i] -= g*rho_v*dt_;
+        }
         __syncthreads();
         
         //This is the RK2-part
