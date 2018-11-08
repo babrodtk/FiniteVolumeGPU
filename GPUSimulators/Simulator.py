@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #Import packages we need
 import numpy as np
 import logging
+from enum import IntEnum
 
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
@@ -31,25 +32,81 @@ import pycuda.driver as cuda
 from GPUSimulators import Common
 
 
-class BaseSimulator:
+        
+
+
+class BoundaryCondition(object):    
     """
-    Initialization routine
-    context: GPU context to use
-    kernel_wrapper: wrapper function of GPU kernel
-    h0: Water depth incl ghost cells, (nx+1)*(ny+1) cells
-    hu0: Initial momentum along x-axis incl ghost cells, (nx+1)*(ny+1) cells
-    hv0: Initial momentum along y-axis incl ghost cells, (nx+1)*(ny+1) cells
-    nx: Number of cells along x-axis
-    ny: Number of cells along y-axis
-    dx: Grid cell spacing along x-axis (20 000 m)
-    dy: Grid cell spacing along y-axis (20 000 m)
-    dt: Size of each timestep (90 s)
+    Class for holding boundary conditions for global boundaries
     """
+    
+    
+    class Type(IntEnum):
+        """
+        Enum that describes the different types of boundary conditions
+        WARNING: MUST MATCH THAT OF common.h IN CUDA
+        """
+        Dirichlet = 0,
+        Neumann = 1,
+        Periodic = 2,
+        Reflective = 3
+        
+        
+        
+    def __init__(self, types={ \
+                    'north': Type.Reflective, \
+                    'south': Type.Reflective, \
+                    'east': Type.Reflective, \
+                    'west': Type.Reflective \
+                 }):
+        """
+        Constructor
+        """
+        self.north = types['north']
+        self.south = types['south']
+        self.east = types['east']
+        self.west = types['west']
+
+        
+    def asCodedInt(self):
+        """
+        Helper function which packs four boundary conditions into one integer
+        """
+        bc = 0
+        bc = bc | (self.north & 0x000F) << 24
+        bc = bc | (self.south & 0x000F) << 16
+        bc = bc | (self.east & 0x000F) << 8
+        bc = bc | (self.west & 0x000F) 
+        
+        #for t in types:
+        #    print("{0:s}, {1:d}, {1:032b}, {1:08b}".format(t, types[t]))
+        #print("bc: {0:032b}".format(bc))
+        
+        return np.int32(bc)    
+    
+    
+    
+    
+class BaseSimulator(object):
+   
     def __init__(self, \
                  context, \
                  nx, ny, \
                  dx, dy, dt, \
                  block_width, block_height):
+        """
+        Initialization routine
+        context: GPU context to use
+        kernel_wrapper: wrapper function of GPU kernel
+        h0: Water depth incl ghost cells, (nx+1)*(ny+1) cells
+        hu0: Initial momentum along x-axis incl ghost cells, (nx+1)*(ny+1) cells
+        hv0: Initial momentum along y-axis incl ghost cells, (nx+1)*(ny+1) cells
+        nx: Number of cells along x-axis
+        ny: Number of cells along y-axis
+        dx: Grid cell spacing along x-axis (20 000 m)
+        dy: Grid cell spacing along y-axis (20 000 m)
+        dt: Size of each timestep (90 s)
+        """
         #Get logger
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
         
@@ -88,17 +145,19 @@ class BaseSimulator:
     def __str__(self):
         return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
                       
-    """
-    Function which simulates forward in time using the default simulation type
-    """
+    
     def simulate(self, t_end):
+        """
+        Function which simulates forward in time using the default simulation type
+        """
         raise(exceptions.NotImplementedError("Needs to be implemented in subclass"))
                       
-    """ 
-    Function which simulates t_end seconds using forward Euler
-    Requires that the stepEuler functionality is implemented in the subclasses
-    """
+    
     def simulateEuler(self, t_end):
+        """ 
+        Function which simulates t_end seconds using forward Euler
+        Requires that the stepEuler functionality is implemented in the subclasses
+        """
         # Compute number of timesteps to perform
         n = int(t_end / self.dt + 1)
 
@@ -119,17 +178,21 @@ class BaseSimulator:
             print_string = printer.getPrintString(i)
             if (print_string):
                 self.logger.info("%s (Euler): %s", self, print_string)
-                self.check()
+                try:
+                    self.check()
+                except AssertionError as e:
+                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
+                    raise
     
             
         #self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
         return self.t, n
         
-    """
-    Function which simulates t_end seconds using Runge-Kutta 2
-    Requires that the stepRK functionality is implemented in the subclasses
-    """
-    def simulateRK(self, t_end, order):
+    def simulateRK(self, t_end, order):    
+        """
+        Function which simulates t_end seconds using Runge-Kutta 2
+        Requires that the stepRK functionality is implemented in the subclasses
+        """
         # Compute number of timesteps to perform
         n = int(t_end / self.dt + 1)
         
@@ -150,15 +213,20 @@ class BaseSimulator:
             print_string = printer.getPrintString(i)
             if (print_string):
                 self.logger.info("%s (RK2): %s", self, print_string)
-                self.check()
+                try:
+                    self.check()
+                except AssertionError as e:
+                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
+                    raise
     
         return self.t, n
         
-    """
-    Function which simulates t_end seconds using second order dimensional splitting (XYYX)
-    Requires that the stepDimsplitX and stepDimsplitY functionality is implemented in the subclasses
-    """
+    
     def simulateDimsplit(self, t_end):
+        """
+        Function which simulates t_end seconds using second order dimensional splitting (XYYX)
+        Requires that the stepDimsplitX and stepDimsplitY functionality is implemented in the subclasses
+        """
         # Compute number of timesteps to perform
         n = int(t_end / (2.0*self.dt) + 1)
         
@@ -180,24 +248,37 @@ class BaseSimulator:
             print_string = printer.getPrintString(i)
             if (print_string):
                 self.logger.info("%s (Dimsplit): %s", self, print_string)
-                self.check()
+                try:
+                    self.check()
+                except AssertionError as e:
+                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
+                    raise
             
         return self.t, 2*n
         
     
-    """
-    Function which performs one single timestep of size dt using forward euler
-    """
     def stepEuler(self, dt):
+        """
+        Function which performs one single timestep of size dt using forward euler
+        """
         raise(NotImplementedError("Needs to be implemented in subclass"))
         
     def stepRK(self, dt, substep):
+        """
+        Function which performs one single timestep of size dt using Runge-Kutta
+        """
         raise(NotImplementedError("Needs to be implemented in subclass"))
     
     def stepDimsplitXY(self, dt):
+        """
+        Function which performs one single timestep of size dt using dimensional splitting
+        """
         raise(NotImplementedError("Needs to be implemented in subclass"))
         
     def stepDimsplitYX(self, dt):
+        """
+        Function which performs one single timestep of size dt using dimensional splitting
+        """
         raise(NotImplementedError("Needs to be implemented in subclass"))
 
     def download(self):
@@ -215,3 +296,25 @@ class BaseSimulator:
     def simSteps(self):
         return self.nt
         
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+def stepOrderToCodedInt(step, order):
+    """
+    Helper function which packs the step and order into a single integer
+    """
+    step_order = (step << 16) ^ (order & 0x00ff)
+    #print("Step:  {0:032b}".format(step))
+    #print("Order: {0:032b}".format(order))
+    #print("Mix:   {0:032b}".format(step_order))
+    return np.int32(step_order)

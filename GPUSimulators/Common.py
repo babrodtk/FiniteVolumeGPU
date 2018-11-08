@@ -186,7 +186,7 @@ Class that holds 2D data
 """
 class CudaArray2D:
     """
-    Uploads initial data to the CL device
+    Uploads initial data to the CUDA device
     """
     def __init__(self, stream, nx, ny, x_halo, y_halo, cpu_data=None, dtype=np.float32):
         self.logger =  logging.getLogger(__name__)
@@ -217,10 +217,8 @@ class CudaArray2D:
         copy.set_dst_device(self.data.gpudata)
             
         #Set offsets of upload in destination
-        x_offset = (nx_halo - cpu_data.shape[1]) // 2
-        y_offset = (ny_halo - cpu_data.shape[0]) // 2
-        copy.dst_x_in_bytes = x_offset*self.data.strides[1]
-        copy.dst_y = y_offset
+        copy.dst_x_in_bytes = x_halo*self.data.strides[1]
+        copy.dst_y = y_halo
         
         #Set destination pitch
         copy.dst_pitch = self.data.strides[0]

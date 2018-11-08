@@ -110,7 +110,7 @@ inline __device__ void readBlock(float* ptr_, int pitch_,
         const int l = min(y + y_offset, ny_+2*ghost_cells-1);
         */
         
-        float* row = (float*) ((char*) ptr_  + pitch_*l);
+        float* row = (float*) ((char*) ptr_ + pitch_*l);
         
         for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
             const int k = min(bx + i, nx_+2*ghost_cells-1);
@@ -167,90 +167,116 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
 
 template<int block_width, int block_height, int ghost_cells, int scale_east_west=1, int scale_north_south=1>
 __device__ void noFlowBoundary(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
-    
+    bcEastReflective<block_width, block_height, ghost_cells, scale_east_west>(Q, nx_, ny_);
+    bcWestReflective<block_width, block_height, ghost_cells, scale_east_west>(Q, nx_, ny_);
+    __syncthreads();
+    bcNorthReflective<block_width, block_height, ghost_cells, scale_north_south>(Q, nx_, ny_);
+    bcSouthReflective<block_width, block_height, ghost_cells, scale_north_south>(Q, nx_, ny_);
+    __syncthreads();
+}
+
+
+// West boundary
+template<int block_width, int block_height, int ghost_cells, int sign>
+__device__ void bcWestReflective(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
     for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+= block_height) {
         const int i = threadIdx.x + ghost_cells;
         const int ti = blockDim.x*blockIdx.x + i;
-        const int tj = blockDim.y*blockIdx.y + j;
         
-        // West boundary
         if (ti == ghost_cells) {
-            Q[j][i-1] = scale_east_west*Q[j][i];
+            Q[j][i-1] = sign*Q[j][i];
         }
         if (ghost_cells >= 2 && ti == ghost_cells + 1) {
-            Q[j][i-3] = scale_east_west*Q[j][i];
+            Q[j][i-3] = sign*Q[j][i];
         }
         if (ghost_cells >= 3 && ti == ghost_cells + 2) {
-            Q[j][i-5] = scale_east_west*Q[j][i];
+            Q[j][i-5] = sign*Q[j][i];
         }
         if (ghost_cells >= 4 && ti == ghost_cells + 3) {
-            Q[j][i-7] = scale_east_west*Q[j][i];
+            Q[j][i-7] = sign*Q[j][i];
         }
         if (ghost_cells >= 5 && ti == ghost_cells + 4) {
-            Q[j][i-9] = scale_east_west*Q[j][i];
-        }
-        
-        
-        
-        // East boundary
-        if (ti == nx_ + ghost_cells - 1) {
-            Q[j][i+1] = scale_east_west*Q[j][i];
-        }
-        if (ghost_cells >= 2 && ti == nx_ + ghost_cells - 2) {
-            Q[j][i+3] = scale_east_west*Q[j][i];
-        }
-        if (ghost_cells >= 3 && ti == nx_ + ghost_cells - 3) {
-            Q[j][i+5] = scale_east_west*Q[j][i];
-        }
-        if (ghost_cells >= 4 && ti == nx_ + ghost_cells - 4) {
-            Q[j][i+7] = scale_east_west*Q[j][i];
-        }
-        if (ghost_cells >= 5 && ti == nx_ + ghost_cells - 5) {
-            Q[j][i+9] = scale_east_west*Q[j][i];
+            Q[j][i-9] = sign*Q[j][i];
         }
     }
-    
-    
+}
 
+
+// East boundary
+template<int block_width, int block_height, int ghost_cells, int sign>
+__device__ void bcEastReflective(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
+    for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+= block_height) {
+        const int i = threadIdx.x + ghost_cells;
+        const int ti = blockDim.x*blockIdx.x + i;
+        
+        if (ti == nx_ + ghost_cells - 1) {
+            Q[j][i+1] = sign*Q[j][i];
+        }
+        if (ghost_cells >= 2 && ti == nx_ + ghost_cells - 2) {
+            Q[j][i+3] = sign*Q[j][i];
+        }
+        if (ghost_cells >= 3 && ti == nx_ + ghost_cells - 3) {
+            Q[j][i+5] = sign*Q[j][i];
+        }
+        if (ghost_cells >= 4 && ti == nx_ + ghost_cells - 4) {
+            Q[j][i+7] = sign*Q[j][i];
+        }
+        if (ghost_cells >= 5 && ti == nx_ + ghost_cells - 5) {
+            Q[j][i+9] = sign*Q[j][i];
+        }
+    }
+}
+    
+    
+// South boundary
+template<int block_width, int block_height, int ghost_cells, int sign>
+__device__ void bcSouthReflective(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
     for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+= block_width) {
         const int j = threadIdx.y + ghost_cells;
-        const int ti = blockDim.x*blockIdx.x + i;
         const int tj = blockDim.y*blockIdx.y + j;
 
-        // South boundary
         if (tj == ghost_cells) {
-            Q[j-1][i] = scale_north_south*Q[j][i];
+            Q[j-1][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 2 && tj == ghost_cells + 1) {
-            Q[j-3][i] = scale_north_south*Q[j][i];
+            Q[j-3][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 3 && tj == ghost_cells + 2) {
-            Q[j-5][i] = scale_north_south*Q[j][i];
+            Q[j-5][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 4 && tj == ghost_cells + 3) {
-            Q[j-7][i] = scale_north_south*Q[j][i];
+            Q[j-7][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 5 && tj == ghost_cells + 4) {
-            Q[j-9][i] = scale_north_south*Q[j][i];
+            Q[j-9][i] = sign*Q[j][i];
         }
+    }
+}
         
         
         
-        // North boundary
+    
+// North boundary
+template<int block_width, int block_height, int ghost_cells, int sign>
+__device__ void bcNorthReflective(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
+    for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+= block_width) {
+        const int j = threadIdx.y + ghost_cells;
+        const int tj = blockDim.y*blockIdx.y + j;
+        
         if (tj == ny_ + ghost_cells - 1) {
-            Q[j+1][i] = scale_north_south*Q[j][i];
+            Q[j+1][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 2 && tj == ny_ + ghost_cells - 2) {
-            Q[j+3][i] = scale_north_south*Q[j][i];
+            Q[j+3][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 3 && tj == ny_ + ghost_cells - 3) {
-            Q[j+5][i] = scale_north_south*Q[j][i];
+            Q[j+5][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 4 && tj == ny_ + ghost_cells - 4) {
-            Q[j+7][i] = scale_north_south*Q[j][i];
+            Q[j+7][i] = sign*Q[j][i];
         }
         if (ghost_cells >= 5 && tj == ny_ + ghost_cells - 5) {
-            Q[j+9][i] = scale_north_south*Q[j][i];
+            Q[j+9][i] = sign*Q[j][i];
         }
     }
 }
@@ -282,7 +308,7 @@ __device__ void evolveF(float Q[vars][block_height+2*ghost_cells][block_width+2*
               const float dx_, const float dt_) {
     for (int var=0; var < vars; ++var) {
         for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
-            for (int i=threadIdx.x+1; i<block_width+2*ghost_cells; i+=block_width) {
+            for (int i=threadIdx.x+ghost_cells; i<block_width+ghost_cells; i+=block_width) {
                 Q[var][j][i] = Q[var][j][i] + (F[var][j][i-1] - F[var][j][i]) * dt_ / dx_;
             }
         }
@@ -302,7 +328,7 @@ __device__ void evolveG(float Q[vars][block_height+2*ghost_cells][block_width+2*
               float G[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
               const float dy_, const float dt_) {
     for (int var=0; var < vars; ++var) {
-        for (int j=threadIdx.y+1; j<block_height+2*ghost_cells; j+=block_height) {
+        for (int j=threadIdx.y+ghost_cells; j<block_height+ghost_cells; j+=block_height) {
             for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
                 Q[var][j][i] = Q[var][j][i] + (G[var][j-1][i] - G[var][j][i]) * dt_ / dy_;
             }
@@ -329,11 +355,45 @@ __device__ void memset(float Q[vars][shmem_height][shmem_width], float value) {
 } 
 
 
+/**
+  * Returns the step stored in the leftmost 16 bits 
+  * of the 32 bit step-order integer
+  */
+inline __device__ int getStep(int step_order_) {
+    return step_order_ >> 16;
+}
+
+/**
+  * Returns the order stored in the rightmost 16 bits 
+  * of the 32 bit step-order integer
+  */
+inline __device__ int getOrder(int step_order_) {
+    return step_order_ & 0x0000FFFF;
+}
 
 
+enum BoundaryCondition {
+    Dirichlet = 0,
+    Neumann = 1,
+    Periodic = 2,
+    Reflective = 3
+};
 
+inline __device__ BoundaryCondition getBCNorth(int bc_) {
+    return static_cast<BoundaryCondition>(bc_ & 0x000F);
+}
 
+inline __device__ BoundaryCondition getBCSouth(int bc_) {
+    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x000F);
+}
 
+inline __device__ BoundaryCondition getBCEast(int bc_) {
+    return static_cast<BoundaryCondition>((bc_ >> 16) & 0x000F);
+}
+
+inline __device__ BoundaryCondition getBCWest(int bc_) {
+    return static_cast<BoundaryCondition>(bc_ >> 24);
+}
 
 
 

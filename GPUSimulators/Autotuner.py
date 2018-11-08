@@ -60,7 +60,7 @@ class Autotuner:
                     return
     
         # Set arguments to send to the simulators during construction
-        context = Common.CudaContext(autotuning=False)
+        context = CudaContext.CudaContext(autotuning=False)
         g = 9.81
         h0, hu0, hv0, dx, dy, dt = Autotuner.gen_test_data(nx=self.nx, ny=self.ny, g=g)
         arguments = {

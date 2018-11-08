@@ -122,14 +122,17 @@ void computeFluxG(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
   * This unsplit kernel computes the 2D numerical scheme with a TVD RK2 time integration scheme
   */
 extern "C" {
+    
 __global__ void KP07DimsplitKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
+        float g_,
         float gamma_,
         
         float theta_,
         
-        int step_,
+        int step_order_,
+        int boundary_conditions_,
         
         //Input h^n
         float* rho0_ptr_, int rho0_pitch_,
@@ -142,7 +145,6 @@ __global__ void KP07DimsplitKernel(
         float* rho_u1_ptr_, int rho_u1_pitch_,
         float* rho_v1_ptr_, int rho_v1_pitch_,
         float* E1_ptr_, int E1_pitch_) {
-        
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc = 2;
@@ -152,8 +154,6 @@ __global__ void KP07DimsplitKernel(
     __shared__ float  Q[4][h+4][w+4];
     __shared__ float Qx[4][h+4][w+4];
     __shared__ float  F[4][h+4][w+4];
-    
-    
     
     //Read into shared memory
     readBlock<w, h, gc>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_);
@@ -167,13 +167,10 @@ __global__ void KP07DimsplitKernel(
     noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
     noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
     noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
-    __syncthreads();
-    
-    const float g = 0.1f;
 
 
     //Step 0 => evolve x first, then y
-    if (step_ == 0) {
+    if (getStep(step_order_) == 0) {
         //Compute fluxes along the x axis and evolve
         minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
@@ -184,17 +181,11 @@ __global__ void KP07DimsplitKernel(
         evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
         __syncthreads();
 
-        //Set boundary conditions
-        noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
-        __syncthreads();
-
         //Compute fluxes along the y axis and evolve
         minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
         __syncthreads();
 
+        
         computeFluxG(Q, Qx, F, gamma_, dy_, dt_);
         __syncthreads();
 
@@ -202,15 +193,14 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();    
         
         //Gravity source term
-        {
+        if (g_ > 0.0f) {
             const int i = threadIdx.x + gc;
             const int j = threadIdx.y + gc;
             const float rho_v = Q[2][j][i];
-            Q[2][j][i] -= g*Q[0][j][i]*dt_;
-            Q[3][j][i] -= g*rho_v*dt_;
+            Q[2][j][i] -= g_*Q[0][j][i]*dt_;
+            Q[3][j][i] -= g_*rho_v*dt_;
+            __syncthreads();
         }
-        __syncthreads();
-
     }
     //Step 1 => evolve y first, then x
     else {
@@ -223,13 +213,6 @@ __global__ void KP07DimsplitKernel(
   
         evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
         __syncthreads();
-  
-        //Set boundary conditions
-        noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1,  1>(Q[3], nx_, ny_);
-        __syncthreads();
         
         //Compute fluxes along the x axis and evolve
         minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
@@ -242,34 +225,36 @@ __global__ void KP07DimsplitKernel(
         __syncthreads();
         
         //Gravity source term
-        {
+        if (g_ > 0.0f) {
             const int i = threadIdx.x + gc;
             const int j = threadIdx.y + gc;
             const float rho_v = Q[2][j][i];
-            Q[2][j][i] -= g*Q[0][j][i]*dt_;
-            Q[3][j][i] -= g*rho_v*dt_;
+            Q[2][j][i] -= g_*Q[0][j][i]*dt_;
+            Q[3][j][i] -= g_*rho_v*dt_;
+            __syncthreads();
         }
-        __syncthreads();
         
         //This is the RK2-part
-        const int tx = threadIdx.x + gc;
-        const int ty = threadIdx.y + gc;
-        const float q1 = Q[0][ty][tx];
-        const float q2 = Q[1][ty][tx];
-        const float q3 = Q[2][ty][tx];
-        const float q4 = Q[3][ty][tx];
-        __syncthreads();
-        
-        readBlock<w, h, gc>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_);
-        readBlock<w, h, gc>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_);
-        readBlock<w, h, gc>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_);
-        readBlock<w, h, gc>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_);
-        __syncthreads();
-        
-        Q[0][ty][tx] = 0.5f*( Q[0][ty][tx] + q1 );
-        Q[1][ty][tx] = 0.5f*( Q[1][ty][tx] + q2 );
-        Q[2][ty][tx] = 0.5f*( Q[2][ty][tx] + q3 );
-        Q[3][ty][tx] = 0.5f*( Q[3][ty][tx] + q4 );
+        if (getOrder(step_order_) == 2) {
+            const int tx = threadIdx.x + gc;
+            const int ty = threadIdx.y + gc;
+            const float q1 = Q[0][ty][tx];
+            const float q2 = Q[1][ty][tx];
+            const float q3 = Q[2][ty][tx];
+            const float q4 = Q[3][ty][tx];
+            __syncthreads();
+            
+            readBlock<w, h, gc>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_);
+            readBlock<w, h, gc>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_);
+            readBlock<w, h, gc>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_);
+            readBlock<w, h, gc>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_);
+            __syncthreads();
+            
+            Q[0][ty][tx] = 0.5f*( Q[0][ty][tx] + q1 );
+            Q[1][ty][tx] = 0.5f*( Q[1][ty][tx] + q2 );
+            Q[2][ty][tx] = 0.5f*( Q[2][ty][tx] + q3 );
+            Q[3][ty][tx] = 0.5f*( Q[3][ty][tx] + q4 );
+        }        
     }
 
     

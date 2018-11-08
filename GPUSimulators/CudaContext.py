@@ -78,8 +78,8 @@ class CudaContext(object):
         self.logger.info("Created context handle <%s>", str(self.cuda_context.handle))
         
         #Create cache dir for cubin files
+        self.cache_path = os.path.join(self.module_path, "cuda_cache") 
         if (self.use_cache):
-            self.cache_path = os.path.join(self.module_path, "cuda_cache") 
             if not os.path.isdir(self.cache_path):
                 os.mkdir(self.cache_path)
             self.logger.info("Using CUDA cache dir %s", self.cache_path)
