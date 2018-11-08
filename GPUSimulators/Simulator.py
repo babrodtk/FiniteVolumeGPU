@@ -72,6 +72,9 @@ class BoundaryCondition(object):
                 or self.east == BoundaryCondition.Type.Neumann \
                 or self.west == BoundaryCondition.Type.Neumann):
             raise(NotImplementedError("Neumann boundary condition not supported"))
+            
+    def __str__(self):
+        return  '[north={:s}, south={:s}, east={:s}, west={:s}]'.format(str(self.north), str(self.south), str(self.east), str(self.west))
 
         
     def asCodedInt(self):
