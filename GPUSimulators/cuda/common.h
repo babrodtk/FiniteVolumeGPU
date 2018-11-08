@@ -86,44 +86,134 @@ __device__ float desingularize(float x_, float eps_) {
 
 
 
+
+
+
+/**
+  * Returns the step stored in the leftmost 16 bits 
+  * of the 32 bit step-order integer
+  */
+inline __device__ int getStep(int step_order_) {
+    return step_order_ >> 16;
+}
+
+/**
+  * Returns the order stored in the rightmost 16 bits 
+  * of the 32 bit step-order integer
+  */
+inline __device__ int getOrder(int step_order_) {
+    return step_order_ & 0x0000FFFF;
+}
+
+
+enum BoundaryCondition {
+    Dirichlet = 0,
+    Neumann = 1,
+    Periodic = 2,
+    Reflective = 3
+};
+
+inline __device__ BoundaryCondition getBCNorth(int bc_) {
+    return static_cast<BoundaryCondition>(bc_ & 0x000F);
+}
+
+inline __device__ BoundaryCondition getBCSouth(int bc_) {
+    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x000F);
+}
+
+inline __device__ BoundaryCondition getBCEast(int bc_) {
+    return static_cast<BoundaryCondition>((bc_ >> 16) & 0x000F);
+}
+
+inline __device__ BoundaryCondition getBCWest(int bc_) {
+    return static_cast<BoundaryCondition>(bc_ >> 24);
+}
+
+
+
+
+
+
+template<int block_width, int block_height, int ghost_cells>
+inline __device__ int handlePeriodicBoundaryX(int k, int nx_, int boundary_conditions_) {
+    const int gc_pad = 2*ghost_cells;
+    
+    if ((k < gc_pad) 
+            && getBCWest(boundary_conditions_) == Periodic) {
+        k += (nx_+2*ghost_cells - 2*gc_pad);
+    }
+    else if ((k >= nx_+2*ghost_cells-gc_pad) 
+            && getBCEast(boundary_conditions_) == Periodic) {
+        k -= (nx_+2*ghost_cells - 2*gc_pad);
+    }
+    
+    return k;
+}
+
+template<int block_width, int block_height, int ghost_cells>
+inline __device__ int handlePeriodicBoundaryY(int l, int ny_, int boundary_conditions_) {
+    const int gc_pad = 2*ghost_cells;
+    
+    if ((l < gc_pad) 
+            && getBCSouth(boundary_conditions_) == Periodic) {
+        l += (ny_+2*ghost_cells - 2*gc_pad);
+    }
+    else if ((l >= ny_+2*ghost_cells-gc_pad) 
+            && getBCNorth(boundary_conditions_) == Periodic) {
+        l -= (ny_+2*ghost_cells - 2*gc_pad);
+    }
+    
+    return l;
+}
+    
+
 /**
   * Reads a block of data with ghost cells
   */
-template<int block_width, int block_height, int ghost_cells>
+template<int block_width, int block_height, int ghost_cells, int sign_north_south, int sign_east_west>
 inline __device__ void readBlock(float* ptr_, int pitch_,
-                float shmem[block_height+2*ghost_cells][block_width+2*ghost_cells], 
-                const int nx_, const int ny_) {
+                float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], 
+                const int nx_, const int ny_,
+                const int boundary_conditions_) {
     //Index of block within domain
     const int bx = blockDim.x * blockIdx.x;
     const int by = blockDim.y * blockIdx.y;
 
-    const int gc_pad = 4;
-    
     //Read into shared memory
     //Loop over all variables
     for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
-        const int l = min(by + j, ny_+2*ghost_cells-1);
-        
-        /*
-        const int y = by + j;
-        const int y_offset = ( (int) (y < gc_pad) - (int) (y >= ny_+2*ghost_cells-gc_pad) ) * (ny_+2*ghost_cells - 2*gc_pad); 
-        const int l = min(y + y_offset, ny_+2*ghost_cells-1);
-        */
-        
+        //Handle periodic boundary conditions here
+        int l = handlePeriodicBoundaryY<block_width, block_height, ghost_cells>(by + j, ny_, boundary_conditions_);
+        l = min(l, ny_+2*ghost_cells-1);
         float* row = (float*) ((char*) ptr_ + pitch_*l);
         
         for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
-            const int k = min(bx + i, nx_+2*ghost_cells-1);
+            //Handle periodic boundary conditions here
+            int k = handlePeriodicBoundaryX<block_width, block_height, ghost_cells>(bx + i, nx_, boundary_conditions_);
+            k = min(k, nx_+2*ghost_cells-1);
             
-            /*
-            const int x = bx + i;
-            const int gc_pad = 4;
-            const int x_offset = ( (int) (x < gc_pad) - (int) (x >= nx_+2*ghost_cells-gc_pad) ) * (nx_+2*ghost_cells - 2*gc_pad); 
-            const int k = min(x + x_offset, nx_+2*ghost_cells-1);
-            */
-            
-            shmem[j][i] = row[k];
+            //Read from global memory
+            Q[j][i] = row[k];
         }
+    }
+    __syncthreads();
+    
+    //Handle reflective boundary conditions
+    if (getBCNorth(boundary_conditions_) == Reflective) {
+        bcNorthReflective<block_width, block_height, ghost_cells, sign_north_south>(Q, nx_, ny_);
+        __syncthreads();
+    }
+    if (getBCSouth(boundary_conditions_) == Reflective) {
+        bcSouthReflective<block_width, block_height, ghost_cells, sign_north_south>(Q, nx_, ny_);
+        __syncthreads();
+    }
+    if (getBCEast(boundary_conditions_) == Reflective) {
+        bcEastReflective<block_width, block_height, ghost_cells, sign_east_west>(Q, nx_, ny_);
+        __syncthreads();
+    }
+    if (getBCWest(boundary_conditions_) == Reflective) {
+        bcWestReflective<block_width, block_height, ghost_cells, sign_east_west>(Q, nx_, ny_);
+        __syncthreads();
     }
 }
 
@@ -163,17 +253,6 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
 
 
 
-
-
-template<int block_width, int block_height, int ghost_cells, int scale_east_west=1, int scale_north_south=1>
-__device__ void noFlowBoundary(float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], const int nx_, const int ny_) {
-    bcEastReflective<block_width, block_height, ghost_cells, scale_east_west>(Q, nx_, ny_);
-    bcWestReflective<block_width, block_height, ghost_cells, scale_east_west>(Q, nx_, ny_);
-    __syncthreads();
-    bcNorthReflective<block_width, block_height, ghost_cells, scale_north_south>(Q, nx_, ny_);
-    bcSouthReflective<block_width, block_height, ghost_cells, scale_north_south>(Q, nx_, ny_);
-    __syncthreads();
-}
 
 
 // West boundary
@@ -353,50 +432,6 @@ __device__ void memset(float Q[vars][shmem_height][shmem_width], float value) {
         }
     }
 } 
-
-
-/**
-  * Returns the step stored in the leftmost 16 bits 
-  * of the 32 bit step-order integer
-  */
-inline __device__ int getStep(int step_order_) {
-    return step_order_ >> 16;
-}
-
-/**
-  * Returns the order stored in the rightmost 16 bits 
-  * of the 32 bit step-order integer
-  */
-inline __device__ int getOrder(int step_order_) {
-    return step_order_ & 0x0000FFFF;
-}
-
-
-enum BoundaryCondition {
-    Dirichlet = 0,
-    Neumann = 1,
-    Periodic = 2,
-    Reflective = 3
-};
-
-inline __device__ BoundaryCondition getBCNorth(int bc_) {
-    return static_cast<BoundaryCondition>(bc_ & 0x000F);
-}
-
-inline __device__ BoundaryCondition getBCSouth(int bc_) {
-    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x000F);
-}
-
-inline __device__ BoundaryCondition getBCEast(int bc_) {
-    return static_cast<BoundaryCondition>((bc_ >> 16) & 0x000F);
-}
-
-inline __device__ BoundaryCondition getBCWest(int bc_) {
-    return static_cast<BoundaryCondition>(bc_ >> 24);
-}
-
-
-
 
 
 

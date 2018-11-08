@@ -61,7 +61,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                  gamma, \
                  theta=1.3, \
                  order=2, \
-                 boundaryConditions=BoundaryCondition(), \
+                 boundary_conditions=BoundaryCondition(), \
                  block_width=16, block_height=8):
                  
         # Call super constructor
@@ -73,7 +73,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         self.gamma = np.float32(gamma)
         self.theta = np.float32(theta) 
         self.order = np.int32(order)
-        self.boundaryConditions = boundaryConditions.asCodedInt()
+        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/EE2D_KP07_dimsplit.cu", "KP07DimsplitKernel", \
@@ -112,7 +112,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.gamma, \
                 self.theta, \
                 Simulator.stepOrderToCodedInt(step=0, order=self.order), \
-                self.boundaryConditions, \
+                self.boundary_conditions, \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
                 self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
@@ -132,8 +132,8 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.g, \
                 self.gamma, \
                 self.theta, \
-                Simulator.stepOrderToCodedInt(step=0, order=self.order), \
-                self.boundaryConditions, \
+                Simulator.stepOrderToCodedInt(step=1, order=self.order), \
+                self.boundary_conditions, \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
                 self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], \

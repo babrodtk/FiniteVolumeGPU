@@ -66,6 +66,12 @@ class BoundaryCondition(object):
         self.south = types['south']
         self.east = types['east']
         self.west = types['west']
+        
+        if (self.north == BoundaryCondition.Type.Neumann \
+                or self.south == BoundaryCondition.Type.Neumann \
+                or self.east == BoundaryCondition.Type.Neumann \
+                or self.west == BoundaryCondition.Type.Neumann):
+            raise(NotImplementedError("Neumann boundary condition not supported"))
 
         
     def asCodedInt(self):
@@ -83,6 +89,9 @@ class BoundaryCondition(object):
         #print("bc: {0:032b}".format(bc))
         
         return np.int32(bc)    
+    
+    
+    
     
     
     
