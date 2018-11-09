@@ -134,14 +134,19 @@ inline __device__ BoundaryCondition getBCWest(int bc_) {
 
 
 
-template<int block_width, int block_height, int ghost_cells>
+/**
+  * Alter the index l so that it gives periodic boundary conditions when reading
+  */
+template<int ghost_cells>
 inline __device__ int handlePeriodicBoundaryX(int k, int nx_, int boundary_conditions_) {
     const int gc_pad = 2*ghost_cells;
     
+    //West boundary: add an offset to read from east of domain
     if ((k < gc_pad) 
             && getBCWest(boundary_conditions_) == Periodic) {
         k += (nx_+2*ghost_cells - 2*gc_pad);
     }
+    //East boundary: subtract an offset to read from west of domain
     else if ((k >= nx_+2*ghost_cells-gc_pad) 
             && getBCEast(boundary_conditions_) == Periodic) {
         k -= (nx_+2*ghost_cells - 2*gc_pad);
@@ -150,14 +155,19 @@ inline __device__ int handlePeriodicBoundaryX(int k, int nx_, int boundary_condi
     return k;
 }
 
-template<int block_width, int block_height, int ghost_cells>
+/**
+  * Alter the index l so that it gives periodic boundary conditions when reading
+  */
+template<int ghost_cells>
 inline __device__ int handlePeriodicBoundaryY(int l, int ny_, int boundary_conditions_) {
     const int gc_pad = 2*ghost_cells;
     
+    //South boundary: add an offset to read from north of domain
     if ((l < gc_pad) 
             && getBCSouth(boundary_conditions_) == Periodic) {
         l += (ny_+2*ghost_cells - 2*gc_pad);
     }
+    //North boundary: subtract an offset to read from south of domain
     else if ((l >= ny_+2*ghost_cells-gc_pad) 
             && getBCNorth(boundary_conditions_) == Periodic) {
         l -= (ny_+2*ghost_cells - 2*gc_pad);
@@ -165,12 +175,36 @@ inline __device__ int handlePeriodicBoundaryY(int l, int ny_, int boundary_condi
     
     return l;
 }
-    
+
+
+template<int block_width, int block_height, int ghost_cells, int sign_x, int sign_y>
+inline __device__ int handleReflectiveBoundary(
+                float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], 
+                const int nx_, const int ny_,
+                const int boundary_conditions_) {
+    //Handle reflective boundary conditions
+    if (getBCNorth(boundary_conditions_) == Reflective) {
+        bcNorthReflective<block_width, block_height, ghost_cells, sign_y>(Q, nx_, ny_);
+        __syncthreads();
+    }
+    if (getBCSouth(boundary_conditions_) == Reflective) {
+        bcSouthReflective<block_width, block_height, ghost_cells, sign_y>(Q, nx_, ny_);
+        __syncthreads();
+    }
+    if (getBCEast(boundary_conditions_) == Reflective) {
+        bcEastReflective<block_width, block_height, ghost_cells, sign_x>(Q, nx_, ny_);
+        __syncthreads();
+    }
+    if (getBCWest(boundary_conditions_) == Reflective) {
+        bcWestReflective<block_width, block_height, ghost_cells, sign_x>(Q, nx_, ny_);
+        __syncthreads();
+    }
+}
 
 /**
   * Reads a block of data with ghost cells
   */
-template<int block_width, int block_height, int ghost_cells, int sign_north_south, int sign_east_west>
+template<int block_width, int block_height, int ghost_cells, int sign_x, int sign_y>
 inline __device__ void readBlock(float* ptr_, int pitch_,
                 float Q[block_height+2*ghost_cells][block_width+2*ghost_cells], 
                 const int nx_, const int ny_,
@@ -183,13 +217,13 @@ inline __device__ void readBlock(float* ptr_, int pitch_,
     //Loop over all variables
     for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
         //Handle periodic boundary conditions here
-        int l = handlePeriodicBoundaryY<block_width, block_height, ghost_cells>(by + j, ny_, boundary_conditions_);
+        int l = handlePeriodicBoundaryY<ghost_cells>(by + j, ny_, boundary_conditions_);
         l = min(l, ny_+2*ghost_cells-1);
         float* row = (float*) ((char*) ptr_ + pitch_*l);
         
         for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
             //Handle periodic boundary conditions here
-            int k = handlePeriodicBoundaryX<block_width, block_height, ghost_cells>(bx + i, nx_, boundary_conditions_);
+            int k = handlePeriodicBoundaryX<ghost_cells>(bx + i, nx_, boundary_conditions_);
             k = min(k, nx_+2*ghost_cells-1);
             
             //Read from global memory
@@ -198,23 +232,7 @@ inline __device__ void readBlock(float* ptr_, int pitch_,
     }
     __syncthreads();
     
-    //Handle reflective boundary conditions
-    if (getBCNorth(boundary_conditions_) == Reflective) {
-        bcNorthReflective<block_width, block_height, ghost_cells, sign_north_south>(Q, nx_, ny_);
-        __syncthreads();
-    }
-    if (getBCSouth(boundary_conditions_) == Reflective) {
-        bcSouthReflective<block_width, block_height, ghost_cells, sign_north_south>(Q, nx_, ny_);
-        __syncthreads();
-    }
-    if (getBCEast(boundary_conditions_) == Reflective) {
-        bcEastReflective<block_width, block_height, ghost_cells, sign_east_west>(Q, nx_, ny_);
-        __syncthreads();
-    }
-    if (getBCWest(boundary_conditions_) == Reflective) {
-        bcWestReflective<block_width, block_height, ghost_cells, sign_east_west>(Q, nx_, ny_);
-        __syncthreads();
-    }
+    handleReflectiveBoundary<block_width, block_height, ghost_cells, sign_x, sign_y>(Q, nx_, ny_, boundary_conditions_);
 }
 
 
@@ -226,7 +244,8 @@ inline __device__ void readBlock(float* ptr_, int pitch_,
 template<int block_width, int block_height, int ghost_cells>
 inline __device__ void writeBlock(float* ptr_, int pitch_,
                  float shmem[block_height+2*ghost_cells][block_width+2*ghost_cells],
-                 const int width, const int height) {
+                 const int width, const int height,
+                 int rk_step_, int rk_order_) {
     
     //Index of cell within domain
     const int ti = blockDim.x*blockIdx.x + threadIdx.x + ghost_cells;
@@ -239,9 +258,17 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
         const int ty = threadIdx.y + ghost_cells;
         
         float* const row  = (float*) ((char*) ptr_ + pitch_*tj);
-        row[ti] = shmem[ty][tx];
+        
+        //Handle runge-kutta timestepping here
+        if (rk_order_ == 2 && rk_step_ == 1) {
+            row[ti] = 0.5f*(row[ti] + shmem[ty][tx]);
+        }
+        else {
+            row[ti] = shmem[ty][tx];
+        }
     }
 }
+
 
 
 

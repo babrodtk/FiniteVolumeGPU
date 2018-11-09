@@ -217,8 +217,12 @@ class CudaArray2D:
         copy.set_dst_device(self.data.gpudata)
             
         #Set offsets of upload in destination
-        copy.dst_x_in_bytes = x_halo*self.data.strides[1]
-        copy.dst_y = y_halo
+        # This handles the cases where cpu_data contains ghost cell values
+        # and also when it does not
+        x_offset = (nx_halo - cpu_data.shape[1]) // 2
+        y_offset = (ny_halo - cpu_data.shape[0]) // 2
+        copy.dst_x_in_bytes = x_offset*self.data.strides[1]
+        copy.dst_y = y_offset
         
         #Set destination pitch
         copy.dst_pitch = self.data.strides[0]

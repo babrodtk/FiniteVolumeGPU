@@ -98,20 +98,25 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                         2, 2, \
                         [None, None, None, None])
     
-    def simulate(self, t_end):
-        return super().simulateDimsplit(t_end)
-        
-    def stepEuler(self, dt):
-        return self.stepDimsplitXY(dt)
+    def step(self, dt):
+        if (self.order == 1):
+            self.substepDimsplit(dt, substep=(self.nt % 2))
+        elif (self.order == 2):
+            self.substepDimsplit(dt, substep=0)
+            self.substepDimsplit(dt, substep=1)
+        else:
+            raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
+        self.t += dt
+        self.nt += 1
                 
-    def stepDimsplitXY(self, dt):
+    def substepDimsplit(self, dt, substep):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
                 self.gamma, \
                 self.theta, \
-                Simulator.stepOrderToCodedInt(step=0, order=self.order), \
+                Simulator.stepOrderToCodedInt(step=substep, order=self.order), \
                 self.boundary_conditions, \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
                 self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
@@ -122,29 +127,6 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0], \
                 self.u1[3].data.gpudata, self.u1[3].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
-        self.t += dt
-        self.nt += 1
-            
-    def stepDimsplitYX(self, dt):
-        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
-                self.nx, self.ny, \
-                self.dx, self.dy, dt, \
-                self.g, \
-                self.gamma, \
-                self.theta, \
-                Simulator.stepOrderToCodedInt(step=1, order=self.order), \
-                self.boundary_conditions, \
-                self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
-                self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
-                self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
-                self.u0[3].data.gpudata, self.u0[3].data.strides[0], \
-                self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
-                self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0], \
-                self.u1[3].data.gpudata, self.u1[3].data.strides[0])
-        self.u0, self.u1 = self.u1, self.u0
-        self.t += dt
-        self.nt += 1
         
     def download(self):
         return self.u0.download(self.stream)

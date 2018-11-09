@@ -140,7 +140,8 @@ __global__ void KP07Kernel(
         
         float theta_,
         
-        int step_,
+        int step_order_,
+        int boundary_conditions_,
         
         //Input h^n
         float* h0_ptr_, int h0_pitch_,
@@ -167,9 +168,6 @@ __global__ void KP07Kernel(
     
     //Shared memory variables
     __shared__ float Q[3][h+4][w+4];
-    
-    //The following slightly wastes memory, but enables us to reuse the 
-    //funcitons in common.opencl
     __shared__ float Qx[3][h+2][w+2];
     __shared__ float Qy[3][h+2][w+2];
     __shared__ float  F[3][h+1][w+1];
@@ -178,17 +176,9 @@ __global__ void KP07Kernel(
     
     
     //Read into shared memory
-    readBlock<w, h, gc>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
-    readBlock<w, h, gc>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
-    readBlock<w, h, gc>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
-    __syncthreads();
-    
-    
-    //Fix boundary conditions
-    noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-    noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
-    __syncthreads();
+    readBlock<w, h, gc,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     
     
     //Reconstruct slopes along x and axis
@@ -218,31 +208,17 @@ __global__ void KP07Kernel(
         float* const h_row  = (float*) ((char*) h1_ptr_ + h1_pitch_*tj);
         float* const hu_row = (float*) ((char*) hu1_ptr_ + hu1_pitch_*tj);
         float* const hv_row = (float*) ((char*) hv1_ptr_ + hv1_pitch_*tj);
-                    
-        if  (step_ == 0) {
-            //First step of RK2 ODE integrator
-            
+
+        if (getOrder(step_order_) == 2 && getStep(step_order_) == 1) {
+            //Write to main memory
+            h_row[ti]  = 0.5f*(h_row[ti]  + h1);
+            hu_row[ti] = 0.5f*(hu_row[ti] + hu1);
+            hv_row[ti] = 0.5f*(hv_row[ti] + hv1);
+        }
+        else {
             h_row[ti] = h1;
             hu_row[ti] = hu1;
             hv_row[ti] = hv1;
-        }
-        else if (step_ == 1) {
-            //Second step of RK2 ODE integrator
-            
-            //First read Q^n
-            const float h_a  = h_row[ti];
-            const float hu_a = hu_row[ti];
-            const float hv_a = hv_row[ti];
-            
-            //Compute Q^n+1
-            const float h_b  = 0.5f*(h_a + h1);
-            const float hu_b = 0.5f*(hu_a + hu1);
-            const float hv_b = 0.5f*(hv_a + hv1);
-            
-            //Write to main memory
-            h_row[ti] = h_b;
-            hu_row[ti] = hu_b;
-            hv_row[ti] = hv_b;
         }
     }
 }

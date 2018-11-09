@@ -157,8 +157,8 @@ __global__ void KP07DimsplitKernel(
     
     //Read into shared memory
     readBlock<w, h, gc,  1,  1>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc,  1, -1>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc, -1,  1>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc, -1,  1>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc,  1, -1>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     readBlock<w, h, gc,  1,  1>(    E0_ptr_,     E0_pitch_, Q[3], nx_, ny_, boundary_conditions_);
     __syncthreads();
 
@@ -226,33 +226,16 @@ __global__ void KP07DimsplitKernel(
             Q[3][j][i] -= g_*rho_v*dt_;
             __syncthreads();
         }
-        
-        //This is the RK2-part
-        if (getOrder(step_order_) == 2) {
-            const int i = threadIdx.x + gc;
-            const int j = threadIdx.y + gc;
-            const int tx = blockDim.x*blockIdx.x + i;
-            const int ty = blockDim.y*blockIdx.y + j;
-            
-            const float q1 = ((float*) ((char*)   rho1_ptr_ +   rho1_pitch_*ty))[tx];
-            const float q2 = ((float*) ((char*) rho_u1_ptr_ + rho_u1_pitch_*ty))[tx];
-            const float q3 = ((float*) ((char*) rho_v1_ptr_ + rho_v1_pitch_*ty))[tx];
-            const float q4 = ((float*) ((char*)     E1_ptr_ +     E1_pitch_*ty))[tx];
-            
-            Q[0][j][i] = 0.5f*( Q[0][j][i] + q1 );
-            Q[1][j][i] = 0.5f*( Q[1][j][i] + q2 );
-            Q[2][j][i] = 0.5f*( Q[2][j][i] + q3 );
-            Q[3][j][i] = 0.5f*( Q[3][j][i] + q4 );
-            __syncthreads();
-        }        
     }
 
     
     // Write to main memory for all internal cells
-    writeBlock<w, h, gc>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_);
-    writeBlock<w, h, gc>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_);
-    writeBlock<w, h, gc>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_);
-    writeBlock<w, h, gc>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_);
+    const int step = getStep(step_order_);
+    const int order = getOrder(step_order_);
+    writeBlock<w, h, gc>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_, step, order);
+    writeBlock<w, h, gc>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_, step, order);
+    writeBlock<w, h, gc>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_, step, order);
+    writeBlock<w, h, gc>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_, step, order);
 }
 
 } // extern "C"

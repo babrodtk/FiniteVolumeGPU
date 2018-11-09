@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 from GPUSimulators import Simulator, Common
+from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
 
@@ -56,6 +57,8 @@ class KP07 (Simulator.BaseSimulator):
                  dx, dy, dt, \
                  g, \
                  theta=1.3, \
+                 order=2, \
+                 boundary_conditions=BoundaryCondition(), \
                  block_width=16, block_height=16):
                  
         # Call super constructor
@@ -65,10 +68,12 @@ class KP07 (Simulator.BaseSimulator):
             block_width, block_height);
         self.g = np.float32(g)             
         self.theta = np.float32(theta)
+        self.order = np.int32(order)
+        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/SWE2D_KP07.cu", "KP07Kernel", \
-                                        "iifffffiPiPiPiPiPiPi", \
+                                        "iifffffiiPiPiPiPiPiPi", \
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 
                                             'BLOCK_HEIGHT': self.block_size[1]
@@ -88,9 +93,19 @@ class KP07 (Simulator.BaseSimulator):
                         nx, ny, \
                         2, 2, \
                         [None, None, None])
-    
-    def simulate(self, t_end):
-        return super().simulateRK(t_end, 2)
+                        
+        
+    def step(self, dt):
+        if (self.order == 1):
+            self.substepRK(dt, substep=0)
+        elif (self.order == 2):
+            self.substepRK(dt, substep=0)
+            self.substepRK(dt, substep=1)
+        else:
+            raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
+        self.t += dt
+        self.nt += 1
+
         
     def substepRK(self, dt, substep):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
@@ -98,7 +113,8 @@ class KP07 (Simulator.BaseSimulator):
                 self.dx, self.dy, dt, \
                 self.g, \
                 self.theta, \
-                np.int32(substep), \
+                Simulator.stepOrderToCodedInt(step=substep, order=self.order), \
+                self.boundary_conditions, \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
                 self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
@@ -106,19 +122,6 @@ class KP07 (Simulator.BaseSimulator):
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
-        
-    def stepEuler(self, dt):
-        self.substepRK(dt, 0)
-        self.t += dt
-        self.nt += 1
-        
-    def stepRK(self, dt, order):
-        if (order != 2):
-            raise NotImplementedError("Only second order implemented")
-        self.substepRK(dt, 0)
-        self.substepRK(dt, 1)
-        self.t += dt
-        self.nt += 1
     
     def download(self):
         return self.u0.download(self.stream)

@@ -103,7 +103,10 @@ extern "C" {
 __global__ void WAFKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
-        float g_, int step_,
+        float g_, 
+        
+        int step_order_,
+        int boundary_conditions_,
         
         //Input h^n
         float* h0_ptr_, int h0_pitch_,
@@ -127,32 +130,19 @@ __global__ void WAFKernel(
     
     
     //Read into shared memory Q from global memory
-    readBlock<w, h, gc>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
-    readBlock<w, h, gc>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
-    readBlock<w, h, gc>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
-    __syncthreads();
-    
-    
-    //Set boundary conditions
-    noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-    noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
+    readBlock<w, h, gc,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     __syncthreads();
     
     
     
     //Step 0 => evolve x first, then y
-    if (step_ == 0) {
+    if (getStep(step_order_) == 0) {
         //Compute fluxes along the x axis and evolve
         computeFluxF(Q, F, g_, dx_, dt_);
         __syncthreads();
         evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
-        __syncthreads();
-        
-        //Fix boundary conditions
-        noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
         __syncthreads();
         
         //Compute fluxes along the y axis and evolve
@@ -169,12 +159,6 @@ __global__ void WAFKernel(
         evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
         __syncthreads();
         
-        //Fix boundary conditions
-        noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-        noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-        noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
-        __syncthreads();
-        
         //Compute fluxes along the x axis and evolve
         computeFluxF(Q, F, g_, dx_, dt_);
         __syncthreads();
@@ -185,9 +169,11 @@ __global__ void WAFKernel(
 
     
     // Write to main memory for all internal cells
-    writeBlock<w, h, 2>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
-    writeBlock<w, h, 2>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
-    writeBlock<w, h, 2>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
+    const int step = getStep(step_order_);
+    const int order = getOrder(step_order_);
+    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, step, order);
+    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, step, order);
+    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, step, order);
 }
 
 } // extern "C"

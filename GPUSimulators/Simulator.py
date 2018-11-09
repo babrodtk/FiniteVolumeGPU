@@ -159,16 +159,9 @@ class BaseSimulator(object):
                       
     
     def simulate(self, t_end):
-        """
-        Function which simulates forward in time using the default simulation type
-        """
-        raise(exceptions.NotImplementedError("Needs to be implemented in subclass"))
-                      
-    
-    def simulateEuler(self, t_end):
         """ 
-        Function which simulates t_end seconds using forward Euler
-        Requires that the stepEuler functionality is implemented in the subclasses
+        Function which simulates t_end seconds using the step function
+        Requires that the step() function is implemented in the subclasses
         """
         # Compute number of timesteps to perform
         n = int(t_end / self.dt + 1)
@@ -176,15 +169,16 @@ class BaseSimulator(object):
         printer = Common.ProgressPrinter(n)
         
         for i in range(0, n):
-            # Compute timestep for "this" iteration
+            # Compute timestep for "this" iteration (i.e., shorten last timestep)
             local_dt = np.float32(min(self.dt, t_end-i*self.dt))
             
             # Stop if end reached (should not happen)
             if (local_dt <= 0.0):
+                self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.nt + i))
                 break
         
-            # Step with forward Euler 
-            self.stepEuler(local_dt)
+            # Step forward in time
+            self.step(local_dt)
 
             #Print info
             print_string = printer.getPrintString(i)
@@ -200,96 +194,10 @@ class BaseSimulator(object):
         #self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
         return self.t, n
         
-    def simulateRK(self, t_end, order):    
-        """
-        Function which simulates t_end seconds using Runge-Kutta 2
-        Requires that the stepRK functionality is implemented in the subclasses
-        """
-        # Compute number of timesteps to perform
-        n = int(t_end / self.dt + 1)
-        
-        printer = Common.ProgressPrinter(n)
-        
-        for i in range(0, n):
-            # Compute timestep for "this" iteration
-            local_dt = np.float32(min(self.dt, t_end-i*self.dt))
-            
-            # Stop if end reached (should not happen)
-            if (local_dt <= 0.0):
-                break
-        
-            # Perform all the Runge-Kutta substeps
-            self.stepRK(local_dt, order)
-
-            #Print info
-            print_string = printer.getPrintString(i)
-            if (print_string):
-                self.logger.info("%s (RK2): %s", self, print_string)
-                try:
-                    self.check()
-                except AssertionError as e:
-                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
-                    raise
     
-        return self.t, n
-        
-    
-    def simulateDimsplit(self, t_end):
+    def step(self, dt):
         """
-        Function which simulates t_end seconds using second order dimensional splitting (XYYX)
-        Requires that the stepDimsplitX and stepDimsplitY functionality is implemented in the subclasses
-        """
-        # Compute number of timesteps to perform
-        n = int(t_end / (2.0*self.dt) + 1)
-        
-        printer = Common.ProgressPrinter(n)
-
-        for i in range(0, n):
-            # Compute timestep for "this" iteration
-            local_dt = np.float32(0.5*min(2*self.dt, t_end-2*i*self.dt))
-            
-            # Stop if end reached (should not happen)
-            if (local_dt <= 0.0):
-                break
-            
-            # Perform the dimensional split substeps
-            self.stepDimsplitXY(local_dt)
-            self.stepDimsplitYX(local_dt)
-
-            #Print info
-            print_string = printer.getPrintString(i)
-            if (print_string):
-                self.logger.info("%s (Dimsplit): %s", self, print_string)
-                try:
-                    self.check()
-                except AssertionError as e:
-                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
-                    raise
-            
-        return self.t, 2*n
-        
-    
-    def stepEuler(self, dt):
-        """
-        Function which performs one single timestep of size dt using forward euler
-        """
-        raise(NotImplementedError("Needs to be implemented in subclass"))
-        
-    def stepRK(self, dt, substep):
-        """
-        Function which performs one single timestep of size dt using Runge-Kutta
-        """
-        raise(NotImplementedError("Needs to be implemented in subclass"))
-    
-    def stepDimsplitXY(self, dt):
-        """
-        Function which performs one single timestep of size dt using dimensional splitting
-        """
-        raise(NotImplementedError("Needs to be implemented in subclass"))
-        
-    def stepDimsplitYX(self, dt):
-        """
-        Function which performs one single timestep of size dt using dimensional splitting
+        Function which performs one single timestep of size dt
         """
         raise(NotImplementedError("Needs to be implemented in subclass"))
 

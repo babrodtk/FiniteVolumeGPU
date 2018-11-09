@@ -104,6 +104,8 @@ void LxFKernel(
         float dx_, float dy_, float dt_,
         float g_,
         
+        int boundary_conditions_,
+        
         //Input h^n
         float* h0_ptr_, int h0_pitch_,
         float* hu0_ptr_, int hu0_pitch_,
@@ -123,16 +125,9 @@ void LxFKernel(
     __shared__ float G[3][h+1][w  ];
     
     //Read from global memory
-    readBlock<w, h, gc>( h0_ptr_,  h0_pitch_, Q[0], nx_+2, ny_+2);
-    readBlock<w, h, gc>(hu0_ptr_, hu0_pitch_, Q[1], nx_+2, ny_+2);
-    readBlock<w, h, gc>(hv0_ptr_, hv0_pitch_, Q[2], nx_+2, ny_+2);
-    __syncthreads();
-    
-    //Set boundary conditions
-    noFlowBoundary<w, h, gc,  1,  1>(Q[0], nx_, ny_);
-    noFlowBoundary<w, h, gc, -1,  1>(Q[1], nx_, ny_);
-    noFlowBoundary<w, h, gc,  1, -1>(Q[2], nx_, ny_);
-    __syncthreads();
+    readBlock<w, h, gc,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc,  1, -1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc, -1,  1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     
     //Compute fluxes along the x and y axis
     computeFluxF<w, h>(Q, F, g_, dx_, dt_);
@@ -154,9 +149,9 @@ void LxFKernel(
     __syncthreads();
 
     //Write to main memory
-    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_);
-    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_);
-    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_);
+    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, 0, 1);
 }
 
 } // extern "C"

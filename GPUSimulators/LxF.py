@@ -21,7 +21,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
-from GPUSimulators import Simulator, Common, CudaContext
+from GPUSimulators import Simulator, Common
+from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
 
@@ -53,6 +54,7 @@ class LxF (Simulator.BaseSimulator):
                  nx, ny, \
                  dx, dy, dt, \
                  g, \
+                 boundary_conditions=BoundaryCondition(),
                  block_width=16, block_height=16):
                  
         # Call super constructor
@@ -61,10 +63,11 @@ class LxF (Simulator.BaseSimulator):
             dx, dy, dt, \
             block_width, block_height);
         self.g = np.float32(g) 
+        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         # Get kernels
         self.kernel = context.get_prepared_kernel("cuda/SWE2D_LxF.cu", "LxFKernel", \
-                                        "iiffffPiPiPiPiPiPi", \
+                                        "iiffffiPiPiPiPiPiPi", \
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 
                                             'BLOCK_HEIGHT': self.block_size[1]
@@ -85,14 +88,12 @@ class LxF (Simulator.BaseSimulator):
                         1, 1, \
                         [None, None, None])
         
-    def simulate(self, t_end):
-        return super().simulateEuler(t_end)
-        
-    def stepEuler(self, dt):
+    def step(self, dt):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
+                self.boundary_conditions, \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
                 self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], \

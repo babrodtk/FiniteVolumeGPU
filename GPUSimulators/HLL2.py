@@ -21,6 +21,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #Import packages we need
 from GPUSimulators import Simulator, Common
+from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
 
@@ -55,6 +56,8 @@ class HLL2 (Simulator.BaseSimulator):
                  dx, dy, dt, \
                  g, \
                  theta=1.8, \
+                 order=2, \
+                 boundary_conditions=BoundaryCondition(), \
                  block_width=16, block_height=16):
                  
         # Call super constructor
@@ -63,12 +66,13 @@ class HLL2 (Simulator.BaseSimulator):
             dx, dy, dt, \
             block_width, block_height);
         self.g = np.float32(g) 
-            
         self.theta = np.float32(theta)
+        self.order = np.int32(order)
+        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/SWE2D_HLL2.cu", "HLL2Kernel", \
-                                        "iifffffiPiPiPiPiPiPi", \
+                                        "iifffffiiPiPiPiPiPiPi", \
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 
                                             'BLOCK_HEIGHT': self.block_size[1]
@@ -88,20 +92,26 @@ class HLL2 (Simulator.BaseSimulator):
                         nx, ny, \
                         2, 2, \
                         [None, None, None])
-    
-    def simulate(self, t_end):
-        return super().simulateDimsplit(t_end)
         
-    def stepEuler(self, dt):
-        return self.stepDimsplitXY(dt)
+    def step(self, dt):
+        if (self.order == 1):
+            self.substepDimsplit(dt, substep=(self.nt % 2))
+        elif (self.order == 2):
+            self.substepDimsplit(dt, substep=0)
+            self.substepDimsplit(dt, substep=1)
+        else:
+            raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
+        self.t += dt
+        self.nt += 1
                 
-    def stepDimsplitXY(self, dt):
+    def substepDimsplit(self, dt, substep):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
                 self.nx, self.ny, \
                 self.dx, self.dy, dt, \
                 self.g, \
                 self.theta, \
-                np.int32(0), \
+                Simulator.stepOrderToCodedInt(step=substep, order=self.order), \
+                self.boundary_conditions, \
                 self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
                 self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
@@ -109,25 +119,6 @@ class HLL2 (Simulator.BaseSimulator):
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
-        self.t += dt
-        self.nt += 1
-            
-    def stepDimsplitYX(self, dt):
-        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
-                self.nx, self.ny, \
-                self.dx, self.dy, dt, \
-                self.g, \
-                self.theta, \
-                np.int32(1), \
-                self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
-                self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
-                self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
-                self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
-                self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0])
-        self.u0, self.u1 = self.u1, self.u0
-        self.t += dt
-        self.nt += 1
-        
+    
     def download(self):
         return self.u0.download(self.stream)
