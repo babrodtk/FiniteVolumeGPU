@@ -69,6 +69,10 @@ class HLL2 (Simulator.BaseSimulator):
         self.theta = np.float32(theta)
         self.order = np.int32(order)
         self.boundary_conditions = boundary_conditions.asCodedInt()
+        
+        #This kernel is dimensionally split, and therefore only second order every other
+        #dimsplit timestep. Therefore, step always runs two substeps
+        self.dt = 2*self.dt
 
         #Get kernels
         self.kernel = context.get_prepared_kernel("cuda/SWE2D_HLL2.cu", "HLL2Kernel", \
@@ -95,14 +99,15 @@ class HLL2 (Simulator.BaseSimulator):
         
     def step(self, dt):
         if (self.order == 1):
-            self.substepDimsplit(dt, substep=(self.nt % 2))
+            self.substepDimsplit(0.5*dt, 0)
+            self.substepDimsplit(0.5*dt, 1)
         elif (self.order == 2):
-            self.substepDimsplit(dt, substep=0)
-            self.substepDimsplit(dt, substep=1)
+            self.substepDimsplit(0.5*dt, 0)
+            self.substepDimsplit(0.5*dt, 1)
         else:
             raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
         self.t += dt
-        self.nt += 1
+        self.nt += 2
                 
     def substepDimsplit(self, dt, substep):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \

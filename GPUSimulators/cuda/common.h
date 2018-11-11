@@ -114,15 +114,15 @@ enum BoundaryCondition {
 };
 
 inline __device__ BoundaryCondition getBCNorth(int bc_) {
-    return static_cast<BoundaryCondition>(bc_ & 0x000F);
+    return static_cast<BoundaryCondition>(bc_ & 0x0000000F);
 }
 
 inline __device__ BoundaryCondition getBCSouth(int bc_) {
-    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x000F);
+    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x0000000F);
 }
 
 inline __device__ BoundaryCondition getBCEast(int bc_) {
-    return static_cast<BoundaryCondition>((bc_ >> 16) & 0x000F);
+    return static_cast<BoundaryCondition>((bc_ >> 16) & 0x0000000F);
 }
 
 inline __device__ BoundaryCondition getBCWest(int bc_) {
@@ -260,12 +260,26 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
         float* const row  = (float*) ((char*) ptr_ + pitch_*tj);
         
         //Handle runge-kutta timestepping here
+        row[ti] = shmem[ty][tx];
+        
+        /**
+          * SSPRK2
+          * u^1   = u^n + dt*f(u^n)
+          * u^n+1 = 1/2*u^n + 1/2*(u^1 + dt*f(u^1))
+          *
+          * SSPRK3
+          * u^1   = u^n + dt*f(u^n)
+          * u^2   = 3/4 * u^n + 1/4 * (u^1 + dt*f(u^1))
+          * u^n+1 = 1/3 * u^n + 2/3 * (u^2 + dt*f(u^2))
+          */
+        
+        /*
         if (rk_order_ == 2 && rk_step_ == 1) {
             row[ti] = 0.5f*(row[ti] + shmem[ty][tx]);
         }
         else {
             row[ti] = shmem[ty][tx];
-        }
+        }*/
     }
 }
 

@@ -82,10 +82,10 @@ class BoundaryCondition(object):
         Helper function which packs four boundary conditions into one integer
         """
         bc = 0
-        bc = bc | (self.north & 0x000F) << 24
-        bc = bc | (self.south & 0x000F) << 16
-        bc = bc | (self.east & 0x000F) << 8
-        bc = bc | (self.west & 0x000F) 
+        bc = bc | (self.north & 0x0000000F) << 24
+        bc = bc | (self.south & 0x0000000F) << 16
+        bc = bc | (self.east & 0x0000000F) << 8
+        bc = bc | (self.west & 0x0000000F) 
         
         #for t in types:
         #    print("{0:s}, {1:d}, {1:032b}, {1:08b}".format(t, types[t]))
@@ -153,11 +153,11 @@ class BaseSimulator(object):
         self.t = 0.0
         self.nt = 0
         
-                      
+
     def __str__(self):
         return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
-                      
-    
+
+
     def simulate(self, t_end):
         """ 
         Function which simulates t_end seconds using the step function
@@ -233,7 +233,7 @@ def stepOrderToCodedInt(step, order):
     """
     Helper function which packs the step and order into a single integer
     """
-    step_order = (step << 16) ^ (order & 0x00ff)
+    step_order = (step << 16) | (order & 0x0000ffff)
     #print("Step:  {0:032b}".format(step))
     #print("Order: {0:032b}".format(order))
     #print("Mix:   {0:032b}".format(step_order))
