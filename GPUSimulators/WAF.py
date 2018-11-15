@@ -25,6 +25,7 @@ from GPUSimulators import Simulator, Common
 from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
+from pycuda import gpuarray
 
 
 
@@ -52,6 +53,7 @@ class WAF (Simulator.BaseSimulator):
                  nx, ny, 
                  dx, dy, dt, 
                  g, 
+                 cfl_scale=0.9,
                  boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=16):
                  
@@ -61,6 +63,7 @@ class WAF (Simulator.BaseSimulator):
             dx, dy, dt*2, 
             block_width, block_height);
         self.g = np.float32(g) 
+        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
@@ -86,6 +89,8 @@ class WAF (Simulator.BaseSimulator):
                         nx, ny, 
                         2, 2, 
                         [None, None, None])
+        self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
+        self.cfl_data.fill(self.dt, stream=self.stream)
     
     def step(self, dt):
         self.substepDimsplit(dt*0.5, substep=0)
@@ -110,3 +115,11 @@ class WAF (Simulator.BaseSimulator):
 
     def download(self):
         return self.u0.download(self.stream)
+        
+    def check(self):
+        self.u0.check()
+        self.u1.check()
+        
+    def computeDt(self):
+        max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
+        return max_dt*0.5*self.cfl_scale

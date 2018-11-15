@@ -151,8 +151,10 @@ __global__ void KP07Kernel(
         //Output h^{n+1}
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
-        float* hv1_ptr_, int hv1_pitch_) {
-            
+        float* hv1_ptr_, int hv1_pitch_,
+        
+        //Output CFL
+        float* cfl_) {
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc_x = 2;
@@ -221,6 +223,11 @@ __global__ void KP07Kernel(
             hu_row[ti] = hu1;
             hv_row[ti] = hv1;
         }
+    }
+    
+    //Compute the CFL for this block
+    if (cfl_ != NULL) {
+        writeCfl<w, h, gc_x, gc_y, vars>(Q, Q[0], nx_, ny_, dx_, dy_, g_, cfl_);
     }
 }
 } //extern "C"

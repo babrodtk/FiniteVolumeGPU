@@ -62,7 +62,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                  g, 
                  gamma, 
                  theta=1.3, 
-                 cfl_scale=0.25*0.9,
+                 cfl_scale=0.9,
                  boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=8):
                  
@@ -140,4 +140,4 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt*self.cfl_scale
+        return max_dt*0.5*self.cfl_scale

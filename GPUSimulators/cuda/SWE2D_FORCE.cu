@@ -97,7 +97,10 @@ __global__ void FORCEKernel(
         //Output h^{n+1}
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
-        float* hv1_ptr_, int hv1_pitch_) {
+        float* hv1_ptr_, int hv1_pitch_,
+        
+        //Output CFL
+        float* cfl_) {
     
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
@@ -130,6 +133,11 @@ __global__ void FORCEKernel(
     writeBlock<w, h, gc_x, gc_y>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, 0, 1);
     writeBlock<w, h, gc_x, gc_y>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, 0, 1);
     writeBlock<w, h, gc_x, gc_y>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, 0, 1);
+    
+    //Compute the CFL for this block
+    if (cfl_ != NULL) {
+        writeCfl<w, h, gc_x, gc_y, vars>(Q, F[0], nx_, ny_, dx_, dy_, g_, cfl_);
+    }
 }
 
 } // extern "C"

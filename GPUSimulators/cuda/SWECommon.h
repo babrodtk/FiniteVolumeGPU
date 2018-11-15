@@ -468,3 +468,66 @@ __device__ float3 FORCE_1D_flux(const float3 Q_l, const float3 Q_r, const float 
     const float3 F_lw2 = LxW2_1D_flux(Q_l, Q_r, g_, dx_, dt_);
     return 0.5f*(F_lf + F_lw2);
 }
+
+
+
+
+
+
+
+
+
+
+template<int w, int h, int gc_x, int gc_y, int vars>
+__device__ void writeCfl(float Q[vars][h+2*gc_y][w+2*gc_x],
+        float shmem[h+2*gc_y][w+2*gc_x],
+        const int nx_, const int ny_,
+        const float dx_, const float dy_, const float g_,
+        float* output_) {
+    //Index of thread within block
+    const int tx = threadIdx.x + gc_x;
+    const int ty = threadIdx.y + gc_y;
+    
+    //Index of cell within domain
+    const int ti = blockDim.x*blockIdx.x + tx;
+    const int tj = blockDim.y*blockIdx.y + ty;
+    
+    //Only internal cells
+    if (ti < nx_+gc_x && tj < ny_+gc_y) {
+        const float h = Q[0][ty][tx];
+        const float u   = Q[1][ty][tx] / h;
+        const float v   = Q[2][ty][tx] / h;
+        
+        const float max_u = dx_ / (fabsf(u) + sqrtf(g_*h));
+        const float max_v = dy_ / (fabsf(v) + sqrtf(g_*h));
+        
+        shmem[ty][tx] = fminf(max_u, max_v);
+    }
+    __syncthreads();
+    
+    //One row of threads loop over all rows
+    if (ti < nx_+gc_x && tj < ny_+gc_y) {
+        if (ty == gc_y) {
+            float min_val = shmem[ty][tx];
+            const int max_y = min(h, ny_+gc_y - tj);
+            for (int j=gc_y; j<max_y+gc_y; j++) {
+                min_val = fminf(min_val, shmem[j][tx]);
+            }
+            shmem[ty][tx] = min_val;
+        }
+    }
+    __syncthreads();
+    
+    //One thread loops over first row to find global max
+    if (tx == gc_x && ty == gc_y) {
+        float min_val = shmem[ty][tx];
+        const int max_x = min(w, nx_+gc_x - ti);
+        for (int i=gc_x; i<max_x+gc_x; ++i) {
+            min_val = fminf(min_val, shmem[ty][i]);
+        }
+        
+        const int idx = gridDim.x*blockIdx.y + blockIdx.x;
+        output_[idx] = min_val;
+    }
+}
+

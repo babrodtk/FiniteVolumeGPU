@@ -29,6 +29,8 @@ from GPUSimulators import Simulator, Common
 from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
+from pycuda import gpuarray
+
 
 
 
@@ -57,6 +59,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                  dx, dy, dt, 
                  g, 
                  theta=1.3, 
+                 cfl_scale=0.9,
                  boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=16):
                  
@@ -69,6 +72,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         self.gc_y = 2
         self.g = np.float32(g)
         self.theta = np.float32(theta)
+        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
@@ -83,7 +87,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                                         }, 
                                         jit_compile_args={})
         self.kernel = module.get_function("KP07DimsplitKernel")
-        self.kernel.prepare("iifffffiiPiPiPiPiPiPi")
+        self.kernel.prepare("iifffffiiPiPiPiPiPiPiP")
     
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, 
@@ -94,6 +98,8 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                         nx, ny, 
                         self.gc_x, self.gc_y, 
                         [None, None, None])
+        self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
+        self.cfl_data.fill(self.dt, stream=self.stream)
     
     def step(self, dt):
         self.substepDimsplit(dt*0.5, 0)
@@ -115,7 +121,8 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
                 self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0])
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0],
+                self.cfl_data.gpudata)
         self.u0, self.u1 = self.u1, self.u0
     
         
@@ -125,3 +132,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
     def check(self):
         self.u0.check()
         self.u1.check()
+        
+    def computeDt(self):
+        max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
+        return max_dt*0.5*self.cfl_scale

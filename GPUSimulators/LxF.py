@@ -25,6 +25,7 @@ from GPUSimulators import Simulator, Common
 from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
+from pycuda import gpuarray
 
 
 
@@ -54,6 +55,7 @@ class LxF (Simulator.BaseSimulator):
                  nx, ny, 
                  dx, dy, dt, 
                  g, 
+                 cfl_scale=0.9,
                  boundary_conditions=BoundaryCondition(),
                  block_width=16, block_height=16):
                  
@@ -63,6 +65,7 @@ class LxF (Simulator.BaseSimulator):
             dx, dy, dt, 
             block_width, block_height);
         self.g = np.float32(g) 
+        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         # Get kernels
@@ -77,7 +80,7 @@ class LxF (Simulator.BaseSimulator):
                                         }, 
                                         jit_compile_args={})
         self.kernel = module.get_function("LxFKernel")
-        self.kernel.prepare("iiffffiPiPiPiPiPiPi")
+        self.kernel.prepare("iiffffiPiPiPiPiPiPiP")
 
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, 
@@ -88,6 +91,8 @@ class LxF (Simulator.BaseSimulator):
                         nx, ny, 
                         1, 1, 
                         [None, None, None])
+        self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
+        self.cfl_data.fill(self.dt, stream=self.stream)
         
     def step(self, dt):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
@@ -100,10 +105,15 @@ class LxF (Simulator.BaseSimulator):
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
                 self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0])
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0],
+                self.cfl_data.gpudata)
         self.u0, self.u1 = self.u1, self.u0
         self.t += dt
         self.nt += 1
   
     def download(self):
         return self.u0.download(self.stream)
+        
+    def computeDt(self):
+        max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
+        return max_dt*0.5*self.cfl_scale
