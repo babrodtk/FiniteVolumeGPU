@@ -38,7 +38,7 @@ from pycuda import gpuarray
 """
 Class that solves the SW equations using the dimentionally split KP07 scheme
 """
-class KP07_dimsplit (Simulator.BaseSimulator):
+class KP07_dimsplit(Simulator.BaseSimulator):
 
     """
     Initialization routine
@@ -56,7 +56,7 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                  context, 
                  h0, hu0, hv0, 
                  nx, ny, 
-                 dx, dy, dt, 
+                 dx, dy, 
                  g, 
                  theta=1.3, 
                  cfl_scale=0.9,
@@ -66,13 +66,13 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         # Call super constructor
         super().__init__(context, 
             nx, ny, 
-            dx, dy, dt*2, 
+            dx, dy, 
+            cfl_scale,
             block_width, block_height)
         self.gc_x = 2
         self.gc_y = 2
         self.g = np.float32(g)
         self.theta = np.float32(theta)
-        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
@@ -99,7 +99,10 @@ class KP07_dimsplit (Simulator.BaseSimulator):
                         self.gc_x, self.gc_y, 
                         [None, None, None])
         self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
-        self.cfl_data.fill(self.dt, stream=self.stream)
+        dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(g*h0)))
+        dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(g*h0)))
+        dt = min(dt_x, dt_y)
+        self.cfl_data.fill(dt, stream=self.stream)
     
     def step(self, dt):
         self.substepDimsplit(dt*0.5, 0)
@@ -135,4 +138,4 @@ class KP07_dimsplit (Simulator.BaseSimulator):
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt*0.5*self.cfl_scale
+        return max_dt*0.5

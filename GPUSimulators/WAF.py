@@ -51,7 +51,7 @@ class WAF (Simulator.BaseSimulator):
                  context,
                  h0, hu0, hv0, 
                  nx, ny, 
-                 dx, dy, dt, 
+                 dx, dy, 
                  g, 
                  cfl_scale=0.9,
                  boundary_conditions=BoundaryCondition(), 
@@ -60,10 +60,10 @@ class WAF (Simulator.BaseSimulator):
         # Call super constructor
         super().__init__(context, 
             nx, ny, 
-            dx, dy, dt*2, 
+            dx, dy, 
+            cfl_scale,
             block_width, block_height);
         self.g = np.float32(g) 
-        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
@@ -78,7 +78,7 @@ class WAF (Simulator.BaseSimulator):
                                         }, 
                                         jit_compile_args={})
         self.kernel = module.get_function("WAFKernel")
-        self.kernel.prepare("iiffffiiPiPiPiPiPiPi")
+        self.kernel.prepare("iiffffiiPiPiPiPiPiPiP")
     
         #Create data by uploading to device
         self.u0 = Common.ArakawaA2D(self.stream, 
@@ -90,7 +90,10 @@ class WAF (Simulator.BaseSimulator):
                         2, 2, 
                         [None, None, None])
         self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
-        self.cfl_data.fill(self.dt, stream=self.stream)
+        dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(g*h0)))
+        dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(g*h0)))
+        dt = min(dt_x, dt_y)
+        self.cfl_data.fill(dt, stream=self.stream)
     
     def step(self, dt):
         self.substepDimsplit(dt*0.5, substep=0)
@@ -110,7 +113,8 @@ class WAF (Simulator.BaseSimulator):
                 self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
                 self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0])
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0],
+                self.cfl_data.gpudata)
         self.u0, self.u1 = self.u1, self.u0
 
     def download(self):
@@ -122,4 +126,4 @@ class WAF (Simulator.BaseSimulator):
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt*0.5*self.cfl_scale
+        return max_dt*0.5

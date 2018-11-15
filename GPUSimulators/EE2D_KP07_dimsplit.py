@@ -58,7 +58,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                  context, 
                  rho, rho_u, rho_v, E, 
                  nx, ny, 
-                 dx, dy, dt, 
+                 dx, dy,  
                  g, 
                  gamma, 
                  theta=1.3, 
@@ -67,14 +67,14 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                  block_width=16, block_height=8):
                  
         # Call super constructor
-        super().__init__(context, \
-            nx, ny, \
-            dx, dy, 2*dt, \
+        super().__init__(context, 
+            nx, ny, 
+            dx, dy, 
+            cfl_scale, 
             block_width, block_height)
         self.g = np.float32(g)
         self.gamma = np.float32(gamma)
         self.theta = np.float32(theta) 
-        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
@@ -102,7 +102,10 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                         2, 2, 
                         [None, None, None, None])
         self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
-        self.cfl_data.fill(self.dt, stream=self.stream)
+        dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(gamma*h0)))
+        dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(gamma*h0)))
+        dt = min(dt_x, dt_y)
+        self.cfl_data.fill(dt, stream=self.stream)
                         
     
     def step(self, dt):
@@ -140,4 +143,4 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt*0.5*self.cfl_scale
+        return max_dt*0.5

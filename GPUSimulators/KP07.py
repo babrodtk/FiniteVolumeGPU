@@ -55,7 +55,7 @@ class KP07 (Simulator.BaseSimulator):
                  context, 
                  h0, hu0, hv0, 
                  nx, ny, 
-                 dx, dy, dt, 
+                 dx, dy, 
                  g, 
                  theta=1.3, 
                  cfl_scale=0.9,
@@ -66,11 +66,11 @@ class KP07 (Simulator.BaseSimulator):
         # Call super constructor
         super().__init__(context, 
             nx, ny, 
-            dx, dy, dt, 
+            dx, dy, 
+            cfl_scale,
             block_width, block_height);
         self.g = np.float32(g)             
         self.theta = np.float32(theta) 
-        self.cfl_scale = cfl_scale
         self.order = np.int32(order)
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
@@ -98,7 +98,10 @@ class KP07 (Simulator.BaseSimulator):
                         2, 2, 
                         [None, None, None])
         self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
-        self.cfl_data.fill(self.dt, stream=self.stream)
+        dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(g*h0)))
+        dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(g*h0)))
+        dt = min(dt_x, dt_y)
+        self.cfl_data.fill(dt, stream=self.stream)
                         
         
     def step(self, dt):
@@ -140,4 +143,4 @@ class KP07 (Simulator.BaseSimulator):
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt*0.5**self.order*self.cfl_scale
+        return max_dt*0.5**self.order

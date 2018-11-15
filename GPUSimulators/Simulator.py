@@ -104,7 +104,8 @@ class BaseSimulator(object):
     def __init__(self, 
                  context, 
                  nx, ny, 
-                 dx, dy, dt, 
+                 dx, dy, 
+                 cfl_scale,
                  block_width, block_height):
         """
         Initialization routine
@@ -130,7 +131,7 @@ class BaseSimulator(object):
         self.ny = np.int32(ny)
         self.dx = np.float32(dx)
         self.dy = np.float32(dy)
-        self.dt = np.float32(dt)
+        self.cfl_scale = cfl_scale
         
         #Handle autotuning block size
         if (self.context.autotuner):
@@ -168,20 +169,22 @@ class BaseSimulator(object):
         
         t_end = self.simTime() + t
         
+        dt = None
+        
         while(self.simTime() < t_end):
             if (self.simSteps() % 100 == 0):
-                self.dt = self.computeDt()
+                dt = self.computeDt()*self.cfl_scale
         
             # Compute timestep for "this" iteration (i.e., shorten last timestep)
-            local_dt = np.float32(min(self.dt, t_end-self.simTime()))
+            dt = np.float32(min(dt, t_end-self.simTime()))
 
             # Stop if end reached (should not happen)
-            if (local_dt <= 0.0):
+            if (dt <= 0.0):
                 self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
                 break
         
             # Step forward in time
-            self.step(local_dt)
+            self.step(dt)
 
             #Print info
             print_string = printer.getPrintString(t_end - self.simTime())
