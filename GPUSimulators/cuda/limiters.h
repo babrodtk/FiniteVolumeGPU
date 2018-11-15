@@ -46,14 +46,14 @@ __device__ __inline__ float minmodSlope(float left, float center, float right, f
 /**
   * Reconstructs a minmod slope for a whole block along the abscissa
   */
-template<int block_width, int block_height, int ghost_cells, int vars>
-__device__ void minmodSlopeX(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
-                  float Qx[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
+template<int w, int h, int gc_x, int gc_y, int vars>
+__device__ void minmodSlopeX(float Q[vars][h+2*gc_y][w+2*gc_x],
+                  float Qx[vars][h+2*gc_y][w+2*gc_x],
                   const float theta_) {
     //Reconstruct slopes along x axis
     for (int p=0; p<vars; ++p) {
-        for (int j=threadIdx.y; j<block_height+2*ghost_cells; j+=block_height) {
-            for (int i=threadIdx.x+1; i<block_width+3; i+=block_width) {
+        for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
+            for (int i=threadIdx.x+1; i<w+2*gc_x-1; i+=w) {
                 Qx[p][j][i] = minmodSlope(Q[p][j][i-1], Q[p][j][i], Q[p][j][i+1], theta_);
             }
         }
@@ -64,14 +64,14 @@ __device__ void minmodSlopeX(float Q[vars][block_height+2*ghost_cells][block_wid
 /**
   * Reconstructs a minmod slope for a whole block along the ordinate
   */
-template<int block_width, int block_height, int ghost_cells, int vars>
-__device__ void minmodSlopeY(float Q[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
-                  float Qy[vars][block_height+2*ghost_cells][block_width+2*ghost_cells],
+template<int w, int h, int gc_x, int gc_y, int vars>
+__device__ void minmodSlopeY(float Q[vars][h+2*gc_y][w+2*gc_x],
+                  float Qy[vars][h+2*gc_y][w+2*gc_x],
                   const float theta_) {
     //Reconstruct slopes along y axis
     for (int p=0; p<vars; ++p) {
-        for (int j=threadIdx.y+1; j<block_height+3; j+=block_height) {
-            for (int i=threadIdx.x; i<block_width+2*ghost_cells; i+=block_width) {
+        for (int j=threadIdx.y+1; j<h+2*gc_y-1; j+=h) {
+            for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
                 Qy[p][j][i] = minmodSlope(Q[p][j-1][i], Q[p][j][i], Q[p][j+1][i], theta_);
             }
         }

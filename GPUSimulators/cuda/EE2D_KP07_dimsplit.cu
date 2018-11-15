@@ -58,8 +58,8 @@ void computeFluxF(float Q[4][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
             const float4 Q_l_bar = Q_lr + dt_/(2.0f*dx_) * (F_func(Q_ll, gamma_) - F_func(Q_lr, gamma_));
 
             // Compute flux based on prediction
-            const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
-            //const float4 flux = HLL_flux(Q_l_bar, Q_r_bar, gamma_);
+            //const float4 flux = CentralUpwindFlux(Q_l_bar, Q_r_bar, gamma_);
+            const float4 flux = HLL_flux(Q_l_bar, Q_r_bar, gamma_);
             
             //Write to shared memory
             F[0][j][i] = flux.x;
@@ -131,7 +131,7 @@ __global__ void KP07DimsplitKernel(
         
         float theta_,
         
-        int step_order_,
+        int step_,
         int boundary_conditions_,
         
         //Input h^n
@@ -144,51 +144,49 @@ __global__ void KP07DimsplitKernel(
         float* rho1_ptr_, int rho1_pitch_,
         float* rho_u1_ptr_, int rho_u1_pitch_,
         float* rho_v1_ptr_, int rho_v1_pitch_,
-        float* E1_ptr_, int E1_pitch_) {
+        float* E1_ptr_, int E1_pitch_, 
+        
+        //Output CFL
+        float* cfl_) {
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
-    const unsigned int gc = 2;
+    const unsigned int gc_x = 2;
+    const unsigned int gc_y = 2;
     const unsigned int vars = 4;
         
     //Shared memory variables
-    __shared__ float  Q[4][h+4][w+4];
-    __shared__ float Qx[4][h+4][w+4];
-    __shared__ float  F[4][h+4][w+4];
+    __shared__ float  Q[4][h+2*gc_y][w+2*gc_x];
+    __shared__ float Qx[4][h+2*gc_y][w+2*gc_x];
+    __shared__ float  F[4][h+2*gc_y][w+2*gc_x];
     
     //Read into shared memory
-    readBlock<w, h, gc,  1,  1>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc, -1,  1>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc,  1, -1>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc,  1,  1>(    E0_ptr_,     E0_pitch_, Q[3], nx_, ny_, boundary_conditions_);
-    __syncthreads();
-
+    readBlock<w, h, gc_x, gc_y,  1,  1>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y, -1,  1>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1, -1>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1,  1>(    E0_ptr_,     E0_pitch_, Q[3], nx_, ny_, boundary_conditions_);
 
     //Step 0 => evolve x first, then y
-    if (getStep(step_order_) == 0) {
+    if (step_ == 0) {
         //Compute fluxes along the x axis and evolve
-        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeX<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-
         computeFluxF(Q, Qx, F, gamma_, dx_, dt_);
         __syncthreads();
-
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
 
         //Compute fluxes along the y axis and evolve
-        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeY<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-
         computeFluxG(Q, Qx, F, gamma_, dy_, dt_);
         __syncthreads();
-
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();    
         
         //Gravity source term
         if (g_ > 0.0f) {
-            const int i = threadIdx.x + gc;
-            const int j = threadIdx.y + gc;
+            const int i = threadIdx.x + gc_x;
+            const int j = threadIdx.y + gc_y;
             const float rho_v = Q[2][j][i];
             Q[2][j][i] -= g_*Q[0][j][i]*dt_;
             Q[3][j][i] -= g_*rho_v*dt_;
@@ -198,29 +196,25 @@ __global__ void KP07DimsplitKernel(
     //Step 1 => evolve y first, then x
     else {
         //Compute fluxes along the y axis and evolve
-        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeY<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-  
         computeFluxG(Q, Qx, F, gamma_, dy_, dt_);
         __syncthreads();
-  
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
         
         //Compute fluxes along the x axis and evolve
-        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeX<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-
         computeFluxF(Q, Qx, F, gamma_, dx_, dt_);
         __syncthreads();
-
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
         
         //Gravity source term
         if (g_ > 0.0f) {
-            const int i = threadIdx.x + gc;
-            const int j = threadIdx.y + gc;
+            const int i = threadIdx.x + gc_x;
+            const int j = threadIdx.y + gc_y;
             const float rho_v = Q[2][j][i];
             Q[2][j][i] -= g_*Q[0][j][i]*dt_;
             Q[3][j][i] -= g_*rho_v*dt_;
@@ -230,12 +224,16 @@ __global__ void KP07DimsplitKernel(
 
     
     // Write to main memory for all internal cells
-    const int step = getStep(step_order_);
-    const int order = getOrder(step_order_);
-    writeBlock<w, h, gc>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_, step, order);
+    writeBlock<w, h, gc_x, gc_y>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_, 0, 1);
+    
+    //Compute the CFL for this block
+    if (cfl_ != NULL) {
+        writeCfl<w, h, gc_x, gc_y, vars>(Q, F[0], nx_, ny_, dx_, dy_, gamma_, cfl_);
+    }
 }
+
 
 } // extern "C"

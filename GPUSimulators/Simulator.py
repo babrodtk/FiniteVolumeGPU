@@ -50,9 +50,9 @@ class BoundaryCondition(object):
         Neumann = 1,
         Periodic = 2,
         Reflective = 3
-        
-        
-        
+
+
+
     def __init__(self, types={ \
                     'north': Type.Reflective, \
                     'south': Type.Reflective, \
@@ -85,13 +85,13 @@ class BoundaryCondition(object):
         bc = bc | (self.north & 0x0000000F) << 24
         bc = bc | (self.south & 0x0000000F) << 16
         bc = bc | (self.east & 0x0000000F) << 8
-        bc = bc | (self.west & 0x0000000F) 
+        bc = bc | (self.west & 0x0000000F)
         
         #for t in types:
         #    print("{0:s}, {1:d}, {1:032b}, {1:08b}".format(t, types[t]))
         #print("bc: {0:032b}".format(bc))
         
-        return np.int32(bc)    
+        return np.int32(bc)
     
     
     
@@ -101,10 +101,10 @@ class BoundaryCondition(object):
     
 class BaseSimulator(object):
    
-    def __init__(self, \
-                 context, \
-                 nx, ny, \
-                 dx, dy, dt, \
+    def __init__(self, 
+                 context, 
+                 nx, ny, 
+                 dx, dy, dt, 
                  block_width, block_height):
         """
         Initialization routine
@@ -141,9 +141,9 @@ class BaseSimulator(object):
         
         #Compute kernel launch parameters
         self.block_size = (block_width, block_height, 1) 
-        self.grid_size = ( \
-                       int(np.ceil(self.nx / float(self.block_size[0]))), \
-                       int(np.ceil(self.ny / float(self.block_size[1]))) \
+        self.grid_size = ( 
+                       int(np.ceil(self.nx / float(self.block_size[0]))), 
+                       int(np.ceil(self.ny / float(self.block_size[1]))) 
                       )
         
         #Create a CUDA stream
@@ -158,43 +158,42 @@ class BaseSimulator(object):
         return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
 
 
-    def simulate(self, t_end):
+    def simulate(self, t):
         """ 
         Function which simulates t_end seconds using the step function
         Requires that the step() function is implemented in the subclasses
         """
-        # Compute number of timesteps to perform
-        n = int(t_end / self.dt + 1)
 
-        printer = Common.ProgressPrinter(n)
+        printer = Common.ProgressPrinter(t)
         
-        for i in range(0, n):
+        t_end = self.simTime() + t
+        
+        while(self.simTime() < t_end):
+            if (self.simSteps() % 100 == 0):
+                self.dt = self.computeDt()
+        
             # Compute timestep for "this" iteration (i.e., shorten last timestep)
-            local_dt = np.float32(min(self.dt, t_end-i*self.dt))
-            
+            local_dt = np.float32(min(self.dt, t_end-self.simTime()))
+
             # Stop if end reached (should not happen)
             if (local_dt <= 0.0):
-                self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.nt + i))
+                self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
                 break
         
             # Step forward in time
             self.step(local_dt)
 
             #Print info
-            print_string = printer.getPrintString(i)
+            print_string = printer.getPrintString(t_end - self.simTime())
             if (print_string):
-                self.logger.info("%s (Euler): %s", self, print_string)
+                self.logger.info("%s: %s", self, print_string)
                 try:
                     self.check()
                 except AssertionError as e:
                     e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
                     raise
-    
-            
-        #self.logger.info("%s simulated %f seconds to %f with %d steps (Euler)", self, t_end, self.t, n)
-        return self.t, n
-        
-    
+
+
     def step(self, dt):
         """
         Function which performs one single timestep of size dt
@@ -208,7 +207,8 @@ class BaseSimulator(object):
         self.stream.synchronize()
 
     def check(self):
-        raise(NotImplementedError("Needs to be implemented in subclass"))
+        self.logger.warning("check() is not implemented - please implement")
+        #raise(NotImplementedError("Needs to be implemented in subclass"))
         
     def simTime(self):
         return self.t
@@ -216,6 +216,8 @@ class BaseSimulator(object):
     def simSteps(self):
         return self.nt
         
+    def computeDt(self):
+        raise(NotImplementedError("Needs to be implemented in subclass"))
         
         
         

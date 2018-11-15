@@ -105,7 +105,7 @@ __global__ void WAFKernel(
         float dx_, float dy_, float dt_,
         float g_, 
         
-        int step_order_,
+        int step_,
         int boundary_conditions_,
         
         //Input h^n
@@ -120,7 +120,8 @@ __global__ void WAFKernel(
             
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
-    const unsigned int gc = 2;
+    const unsigned int gc_x = 2;
+    const unsigned int gc_y = 2;
     const unsigned int vars = 3;
          
     //Shared memory variables
@@ -130,25 +131,25 @@ __global__ void WAFKernel(
     
     
     //Read into shared memory Q from global memory
-    readBlock<w, h, gc,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     __syncthreads();
     
     
     
     //Step 0 => evolve x first, then y
-    if (getStep(step_order_) == 0) {
+    if (step_ == 0) {
         //Compute fluxes along the x axis and evolve
         computeFluxF(Q, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
         
         //Compute fluxes along the y axis and evolve
         computeFluxG(Q, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
     }
     //Step 1 => evolve y first, then x
@@ -156,24 +157,22 @@ __global__ void WAFKernel(
         //Compute fluxes along the y axis and evolve
         computeFluxG(Q, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
         
         //Compute fluxes along the x axis and evolve
         computeFluxF(Q, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
     }
 
 
     
     // Write to main memory for all internal cells
-    const int step = getStep(step_order_);
-    const int order = getOrder(step_order_);
-    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, step, order);
+    writeBlock<w, h, gc_x, gc_y>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, 0, 1);
 }
 
 } // extern "C"

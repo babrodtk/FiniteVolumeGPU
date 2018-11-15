@@ -130,7 +130,7 @@ __global__ void HLL2Kernel(
         
         float theta_,
         
-        int step_order_,
+        int step_,
         int boundary_conditions_,
         
         //Input h^n
@@ -145,7 +145,8 @@ __global__ void HLL2Kernel(
     
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
-    const unsigned int gc = 2;
+    const unsigned int gc_x = 2;
+    const unsigned int gc_y = 2;
     const unsigned int vars = 3;
             
     //Shared memory variables
@@ -154,44 +155,44 @@ __global__ void HLL2Kernel(
     __shared__ float  F[3][h+4][w+4];
     
     //Read into shared memory
-    readBlock<w, h, gc,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     
     //Step 0 => evolve x first, then y
-    if (getStep(step_order_) == 0) {
+    if (step_ == 0) {
         //Compute fluxes along the x axis and evolve
-        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeX<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
         
         //Compute fluxes along the y axis and evolve
-        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeY<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
     }
     //Step 1 => evolve y first, then x
     else {
         //Compute fluxes along the y axis and evolve
-        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeY<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxG(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
         
         //Compute fluxes along the x axis and evolve
-        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+        minmodSlopeX<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
         computeFluxF(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
     }
     
@@ -199,11 +200,9 @@ __global__ void HLL2Kernel(
     
     
     // Write to main memory for all internal cells
-    const int step = getStep(step_order_);
-    const int order = getOrder(step_order_);
-    writeBlock<w, h, 2>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, step, order);
-    writeBlock<w, h, 2>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, step, order);
-    writeBlock<w, h, 2>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, step, order);
+    writeBlock<w, h, gc_x, gc_y>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, 0, 1);
 }
 
 } // extern "C"

@@ -29,7 +29,7 @@ from socket import gethostname
 import pycuda.driver as cuda
 
 
-from GPUSimulators import Common, Simulator
+from GPUSimulators import Common, Simulator, CudaContext
 
 class Autotuner:
     def __init__(self, 

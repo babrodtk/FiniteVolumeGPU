@@ -29,13 +29,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "limiters.h"
 
 
+template <int w, int h, int gc_x, int gc_y>
 __device__
-void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float Qx[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float F[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+void computeFluxF(float Q[3][h+2*gc_y][w+2*gc_x],
+                  float Qx[3][h+2*gc_y][w+2*gc_x],
+                  float F[3][h+2*gc_y][w+2*gc_x],
                   const float g_, const float dx_, const float dt_) {
-    for (int j=threadIdx.y; j<BLOCK_HEIGHT+4; j+=BLOCK_HEIGHT) {
-        for (int i=threadIdx.x+1; i<BLOCK_WIDTH+2; i+=BLOCK_WIDTH) {
+    for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
+        for (int i=threadIdx.x+1; i<w+2*gc_x-2; i+=w) {
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
             const float3 Q_rl = make_float3(Q[0][j][i+1] - 0.5f*Qx[0][j][i+1],
@@ -67,13 +68,14 @@ void computeFluxF(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
     }    
 }
 
+template <int w, int h, int gc_x, int gc_y>
 __device__
-void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float Qy[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
-                  float G[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
+void computeFluxG(float Q[3][h+2*gc_y][w+2*gc_x],
+                  float Qy[3][h+2*gc_y][w+2*gc_x],
+                  float G[3][h+2*gc_y][w+2*gc_x],
                   const float g_, const float dy_, const float dt_) {
-    for (int j=threadIdx.y+1; j<BLOCK_HEIGHT+2; j+=BLOCK_HEIGHT) {
-        for (int i=threadIdx.x; i<BLOCK_WIDTH+4; i+=BLOCK_WIDTH) {
+    for (int j=threadIdx.y+1; j<h+2*gc_y-2; j+=h) {
+        for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
             // Reconstruct point values of Q at the left and right hand side 
             // of the cell for both the left (i) and right (i+1) cell 
             //NOte that hu and hv are swapped ("transposing" the domain)!
@@ -114,6 +116,10 @@ void computeFluxG(float Q[3][BLOCK_HEIGHT+4][BLOCK_WIDTH+4],
   * This unsplit kernel computes the 2D numerical scheme with a TVD RK2 time integration scheme
   */
 extern "C" {
+    
+    
+    
+    
 __global__ void KP07DimsplitKernel(
         int nx_, int ny_,
         float dx_, float dy_, float dt_,
@@ -121,7 +127,7 @@ __global__ void KP07DimsplitKernel(
         
         float theta_,
         
-        int step_order_,
+        int step_,
         int boundary_conditions_,
         
         //Input h^n
@@ -133,71 +139,70 @@ __global__ void KP07DimsplitKernel(
         float* h1_ptr_, int h1_pitch_,
         float* hu1_ptr_, int hu1_pitch_,
         float* hv1_ptr_, int hv1_pitch_) {
-            
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
-    const unsigned int gc = 2;
+    const unsigned int gc_x = 2;
+    const unsigned int gc_y = 2;
     const unsigned int vars = 3;
         
-        
     //Shared memory variables
-    __shared__ float  Q[3][h+4][w+4];
-    __shared__ float Qx[3][h+4][w+4];
-    __shared__ float  F[3][h+4][w+4];
-    
-    
+    __shared__ float  Q[vars][h+2*gc_y][w+2*gc_x];
+    __shared__ float Qx[vars][h+2*gc_y][w+2*gc_x];
+    __shared__ float  F[vars][h+2*gc_y][w+2*gc_x];
     
     //Read into shared memory
-    readBlock<w, h, gc,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1,  1>( h0_ptr_,  h0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y, -1,  1>(hu0_ptr_, hu0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1, -1>(hv0_ptr_, hv0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
     
-    
-    
-    //Step 0 => evolve x first, then y
-    if (getStep(step_order_) == 0) {
-        //Compute fluxes along the x axis and evolve
-        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+    if (step_ == 0) {
+        //Along X
+        minmodSlopeX<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-        computeFluxF(Q, Qx, F, g_, dx_, dt_);
+        computeFluxF<w, h, gc_x, gc_y>(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
         
-        //Compute fluxes along the y axis and evolve
-        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
+        //Along Y
+        minmodSlopeY<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-        computeFluxG(Q, Qx, F, g_, dy_, dt_);
+        computeFluxG<w, h, gc_x, gc_y>(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
     }
-    //Step 1 => evolve y first, then x
     else {
-        //Compute fluxes along the y axis and evolve
-        minmodSlopeY<w, h, gc, vars>(Q, Qx, theta_);
+        //Along Y
+        minmodSlopeY<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-        computeFluxG(Q, Qx, F, g_, dy_, dt_);
+        computeFluxG<w, h, gc_x, gc_y>(Q, Qx, F, g_, dy_, dt_);
         __syncthreads();
-        evolveG<w, h, gc, vars>(Q, F, dy_, dt_);
+        evolveG<w, h, gc_x, gc_y, vars>(Q, F, dy_, dt_);
         __syncthreads();
         
-        //Compute fluxes along the x axis and evolve
-        minmodSlopeX<w, h, gc, vars>(Q, Qx, theta_);
+        //Along X
+        minmodSlopeX<w, h, gc_x, gc_y, vars>(Q, Qx, theta_);
         __syncthreads();
-        computeFluxF(Q, Qx, F, g_, dx_, dt_);
+        computeFluxF<w, h, gc_x, gc_y>(Q, Qx, F, g_, dx_, dt_);
         __syncthreads();
-        evolveF<w, h, gc, vars>(Q, F, dx_, dt_);
+        evolveF<w, h, gc_x, gc_y, vars>(Q, F, dx_, dt_);
         __syncthreads();
     }
-    
     
     // Write to main memory for all internal cells
-    const int step = getStep(step_order_);
-    const int order = getOrder(step_order_);
-    writeBlock<w, h, gc>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, step, order);
-    writeBlock<w, h, gc>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, step, order);
+    writeBlock<w, h, gc_x, gc_y>( h1_ptr_,  h1_pitch_, Q[0], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(hu1_ptr_, hu1_pitch_, Q[1], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(hv1_ptr_, hv1_pitch_, Q[2], nx_, ny_, 0, 1);
 }
+
+
+
+
+
+
+
+
+
 
 } // extern "C"

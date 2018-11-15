@@ -48,57 +48,58 @@ class LxF (Simulator.BaseSimulator):
     dt: Size of each timestep (90 s)
     g: Gravitational accelleration (9.81 m/s^2)
     """
-    def __init__(self, \
-                 context, \
-                 h0, hu0, hv0, \
-                 nx, ny, \
-                 dx, dy, dt, \
-                 g, \
+    def __init__(self, 
+                 context, 
+                 h0, hu0, hv0, 
+                 nx, ny, 
+                 dx, dy, dt, 
+                 g, 
                  boundary_conditions=BoundaryCondition(),
                  block_width=16, block_height=16):
                  
         # Call super constructor
-        super().__init__(context, \
-            nx, ny, \
-            dx, dy, dt, \
+        super().__init__(context, 
+            nx, ny, 
+            dx, dy, dt, 
             block_width, block_height);
         self.g = np.float32(g) 
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         # Get kernels
-        self.kernel = context.get_prepared_kernel("cuda/SWE2D_LxF.cu", "LxFKernel", \
-                                        "iiffffiPiPiPiPiPiPi", \
+        module = context.get_module("cuda/SWE2D_LxF.cu", 
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 
                                             'BLOCK_HEIGHT': self.block_size[1]
-                                        }, \
+                                        }, 
                                         compile_args={
                                             'no_extern_c': True,
                                             'options': ["--use_fast_math"], 
-                                        }, \
+                                        }, 
                                         jit_compile_args={})
+        self.kernel = module.get_function("LxFKernel")
+        self.kernel.prepare("iiffffiPiPiPiPiPiPi")
 
         #Create data by uploading to device
-        self.u0 = Common.ArakawaA2D(self.stream, \
-                        nx, ny, \
-                        1, 1, \
+        self.u0 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        1, 1, 
                         [h0, hu0, hv0])
-        self.u1 = Common.ArakawaA2D(self.stream, \
-                        nx, ny, \
-                        1, 1, \
+        self.u1 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        1, 1, 
                         [None, None, None])
         
     def step(self, dt):
-        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
-                self.nx, self.ny, \
-                self.dx, self.dy, dt, \
-                self.g, \
-                self.boundary_conditions, \
-                self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
-                self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
-                self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
-                self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
-                self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
+                self.nx, self.ny, 
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
         self.t += dt

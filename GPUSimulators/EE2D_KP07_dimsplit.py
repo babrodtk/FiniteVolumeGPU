@@ -24,6 +24,8 @@ from GPUSimulators import Simulator, Common
 from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
 
+from pycuda import gpuarray
+
 
         
         
@@ -52,80 +54,81 @@ class EE2D_KP07_dimsplit (BaseSimulator):
     gamma: Gas constant
     p: pressure
     """
-    def __init__(self, \
-                 context, \
-                 rho, rho_u, rho_v, E, \
-                 nx, ny, \
-                 dx, dy, dt, \
-                 g, \
-                 gamma, \
-                 theta=1.3, \
-                 order=2, \
-                 boundary_conditions=BoundaryCondition(), \
+    def __init__(self, 
+                 context, 
+                 rho, rho_u, rho_v, E, 
+                 nx, ny, 
+                 dx, dy, dt, 
+                 g, 
+                 gamma, 
+                 theta=1.3, 
+                 cfl_scale=0.25*0.9,
+                 boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=8):
                  
         # Call super constructor
         super().__init__(context, \
             nx, ny, \
-            dx, dy, dt, \
+            dx, dy, 2*dt, \
             block_width, block_height)
         self.g = np.float32(g)
         self.gamma = np.float32(gamma)
         self.theta = np.float32(theta) 
-        self.order = np.int32(order)
+        self.cfl_scale = cfl_scale
         self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("cuda/EE2D_KP07_dimsplit.cu", "KP07DimsplitKernel", \
-                                        "iiffffffiiPiPiPiPiPiPiPiPi", \
+        module = context.get_module("cuda/EE2D_KP07_dimsplit.cu", 
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 
                                             'BLOCK_HEIGHT': self.block_size[1]
-                                        }, \
+                                        }, 
                                         compile_args={
                                             'no_extern_c': True,
                                             'options': ["--use_fast_math"], 
-                                        }, \
+                                        }, 
                                         jit_compile_args={})
+        self.kernel = module.get_function("KP07DimsplitKernel")
+        self.kernel.prepare("iiffffffiiPiPiPiPiPiPiPiPiP")
+        
         
         #Create data by uploading to device
-        self.u0 = Common.ArakawaA2D(self.stream, \
-                        nx, ny, \
-                        2, 2, \
+        self.u0 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        2, 2, 
                         [rho, rho_u, rho_v, E])
-        self.u1 = Common.ArakawaA2D(self.stream, \
-                        nx, ny, \
-                        2, 2, \
+        self.u1 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        2, 2, 
                         [None, None, None, None])
+        self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
+        self.cfl_data.fill(self.dt, stream=self.stream)
+                        
     
     def step(self, dt):
-        if (self.order == 1):
-            self.substepDimsplit(dt, substep=(self.nt % 2))
-        elif (self.order == 2):
-            self.substepDimsplit(dt, substep=0)
-            self.substepDimsplit(dt, substep=1)
-        else:
-            raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
+        self.substepDimsplit(0.5*dt, 0)
+        self.substepDimsplit(0.5*dt, 1)
         self.t += dt
-        self.nt += 1
+        self.nt += 2
                 
     def substepDimsplit(self, dt, substep):
-        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
-                self.nx, self.ny, \
-                self.dx, self.dy, dt, \
-                self.g, \
-                self.gamma, \
-                self.theta, \
-                Simulator.stepOrderToCodedInt(step=substep, order=self.order), \
-                self.boundary_conditions, \
-                self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
-                self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
-                self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
-                self.u0[3].data.gpudata, self.u0[3].data.strides[0], \
-                self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
-                self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
-                self.u1[2].data.gpudata, self.u1[2].data.strides[0], \
-                self.u1[3].data.gpudata, self.u1[3].data.strides[0])
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
+                self.nx, self.ny, 
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata)
         self.u0, self.u1 = self.u1, self.u0
         
     def download(self):
@@ -134,4 +137,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
     def check(self):
         self.u0.check()
         self.u1.check()
-        pass
+        
+    def computeDt(self):
+        max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
+        return max_dt*self.cfl_scale

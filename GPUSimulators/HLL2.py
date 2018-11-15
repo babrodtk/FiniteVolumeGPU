@@ -49,79 +49,69 @@ class HLL2 (Simulator.BaseSimulator):
     dt: Size of each timestep (90 s)
     g: Gravitational accelleration (9.81 m/s^2)
     """
-    def __init__(self, \
-                 context, \
-                 h0, hu0, hv0, \
-                 nx, ny, \
-                 dx, dy, dt, \
-                 g, \
-                 theta=1.8, \
-                 order=2, \
-                 boundary_conditions=BoundaryCondition(), \
+    def __init__(self, 
+                 context, 
+                 h0, hu0, hv0, 
+                 nx, ny, 
+                 dx, dy, dt, 
+                 g, 
+                 theta=1.8, 
+                 boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=16):
                  
         # Call super constructor
-        super().__init__(context, \
-            nx, ny, \
-            dx, dy, dt, \
+        super().__init__(context, 
+            nx, ny, 
+            dx, dy, dt*2, 
             block_width, block_height);
         self.g = np.float32(g) 
         self.theta = np.float32(theta)
-        self.order = np.int32(order)
         self.boundary_conditions = boundary_conditions.asCodedInt()
         
-        #This kernel is dimensionally split, and therefore only second order every other
-        #dimsplit timestep. Therefore, step always runs two substeps
-        self.dt = 2*self.dt
-
         #Get kernels
-        self.kernel = context.get_prepared_kernel("cuda/SWE2D_HLL2.cu", "HLL2Kernel", \
-                                        "iifffffiiPiPiPiPiPiPi", \
+        module = context.get_module("cuda/SWE2D_HLL2.cu", 
                                         defines={
                                             'BLOCK_WIDTH': self.block_size[0], 
                                             'BLOCK_HEIGHT': self.block_size[1]
-                                        }, \
+                                        }, 
                                         compile_args={
                                             'no_extern_c': True,
                                             'options': ["--use_fast_math"], 
-                                        }, \
+                                        }, 
                                         jit_compile_args={})
+        self.kernel = module.get_function("HLL2Kernel")
+        self.kernel.prepare("iifffffiiPiPiPiPiPiPi")
         
         #Create data by uploading to device
-        self.u0 = Common.ArakawaA2D(self.stream, \
-                        nx, ny, \
-                        2, 2, \
+        self.u0 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        2, 2, 
                         [h0, hu0, hv0])
-        self.u1 = Common.ArakawaA2D(self.stream, \
-                        nx, ny, \
-                        2, 2, \
+        self.u1 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        2, 2, 
                         [None, None, None])
         
     def step(self, dt):
-        if (self.order == 1):
-            self.substepDimsplit(0.5*dt, 0)
-            self.substepDimsplit(0.5*dt, 1)
-        elif (self.order == 2):
-            self.substepDimsplit(0.5*dt, 0)
-            self.substepDimsplit(0.5*dt, 1)
-        else:
-            raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
+        self.substepDimsplit(dt*0.5, 0)
+        self.substepDimsplit(dt*0.5, 1)
+        
         self.t += dt
         self.nt += 2
                 
     def substepDimsplit(self, dt, substep):
-        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, \
-                self.nx, self.ny, \
-                self.dx, self.dy, dt, \
-                self.g, \
-                self.theta, \
-                Simulator.stepOrderToCodedInt(step=substep, order=self.order), \
-                self.boundary_conditions, \
-                self.u0[0].data.gpudata, self.u0[0].data.strides[0], \
-                self.u0[1].data.gpudata, self.u0[1].data.strides[0], \
-                self.u0[2].data.gpudata, self.u0[2].data.strides[0], \
-                self.u1[0].data.gpudata, self.u1[0].data.strides[0], \
-                self.u1[1].data.gpudata, self.u1[1].data.strides[0], \
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
+                self.nx, self.ny, 
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0])
         self.u0, self.u1 = self.u1, self.u0
     
