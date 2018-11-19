@@ -102,8 +102,8 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                         2, 2, 
                         [None, None, None, None])
         self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
-        dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(gamma*h0)))
-        dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(gamma*h0)))
+        dt_x = np.min(self.dx / (np.abs(rho_u/rho) + np.sqrt(gamma*rho)))
+        dt_y = np.min(self.dy / (np.abs(rho_v/rho) + np.sqrt(gamma*rho)))
         dt = min(dt_x, dt_y)
         self.cfl_data.fill(dt, stream=self.stream)
                         

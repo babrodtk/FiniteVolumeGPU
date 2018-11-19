@@ -116,6 +116,10 @@ class LxF (Simulator.BaseSimulator):
   
     def download(self):
         return self.u0.download(self.stream)
+
+    def check(self):
+        self.u0.check()
+        self.u1.check()
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();

@@ -201,12 +201,12 @@ __global__ void KP07Kernel(
         const int i = tx + 2; //Skip local ghost cells, i.e., +2
         const int j = ty + 2;
         
-        const float h1  = Q[0][j][i] + (F[0][ty][tx] - F[0][ty  ][tx+1]) * dt_ / dx_ 
-                                     + (G[0][ty][tx] - G[0][ty+1][tx  ]) * dt_ / dy_;
-        const float hu1 = Q[1][j][i] + (F[1][ty][tx] - F[1][ty  ][tx+1]) * dt_ / dx_ 
-                                     + (G[1][ty][tx] - G[1][ty+1][tx  ]) * dt_ / dy_;
-        const float hv1 = Q[2][j][i] + (F[2][ty][tx] - F[2][ty  ][tx+1]) * dt_ / dx_ 
-                                     + (G[2][ty][tx] - G[2][ty+1][tx  ]) * dt_ / dy_;
+        Q[0][j][i] += (F[0][ty][tx] - F[0][ty  ][tx+1]) * dt_ / dx_ 
+                    + (G[0][ty][tx] - G[0][ty+1][tx  ]) * dt_ / dy_;
+        Q[1][j][i] += (F[1][ty][tx] - F[1][ty  ][tx+1]) * dt_ / dx_ 
+                    + (G[1][ty][tx] - G[1][ty+1][tx  ]) * dt_ / dy_;
+        Q[2][j][i] += (F[2][ty][tx] - F[2][ty  ][tx+1]) * dt_ / dx_ 
+                    + (G[2][ty][tx] - G[2][ty+1][tx  ]) * dt_ / dy_;
 
         float* const h_row  = (float*) ((char*) h1_ptr_ + h1_pitch_*tj);
         float* const hu_row = (float*) ((char*) hu1_ptr_ + hu1_pitch_*tj);
@@ -214,14 +214,14 @@ __global__ void KP07Kernel(
 
         if (getOrder(step_order_) == 2 && getStep(step_order_) == 1) {
             //Write to main memory
-            h_row[ti]  = 0.5f*(h_row[ti]  + h1);
-            hu_row[ti] = 0.5f*(hu_row[ti] + hu1);
-            hv_row[ti] = 0.5f*(hv_row[ti] + hv1);
+            h_row[ti]  = 0.5f*(h_row[ti]  + Q[0][j][i]);
+            hu_row[ti] = 0.5f*(hu_row[ti] + Q[1][j][i]);
+            hv_row[ti] = 0.5f*(hv_row[ti] + Q[2][j][i]);
         }
         else {
-            h_row[ti] = h1;
-            hu_row[ti] = hu1;
-            hv_row[ti] = hv1;
+            h_row[ti]  = Q[0][j][i];
+            hu_row[ti] = Q[1][j][i];
+            hv_row[ti] = Q[2][j][i];
         }
     }
     

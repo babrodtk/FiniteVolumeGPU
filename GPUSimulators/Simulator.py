@@ -159,7 +159,7 @@ class BaseSimulator(object):
         return "{:s} [{:d}x{:d}]".format(self.__class__.__name__, self.nx, self.ny)
 
 
-    def simulate(self, t):
+    def simulate(self, t, dt=None):
         """ 
         Function which simulates t_end seconds using the step function
         Requires that the step() function is implemented in the subclasses
@@ -167,27 +167,31 @@ class BaseSimulator(object):
 
         printer = Common.ProgressPrinter(t)
         
-        t_end = self.simTime() + t
+        t_start = self.simTime()
+        t_end = t_start + t
         
-        dt = None
+        local_dt = dt
+        
+        if (local_dt == None):
+            local_dt = self.computeDt()
         
         while(self.simTime() < t_end):
-            if (self.simSteps() % 100 == 0):
-                dt = self.computeDt()*self.cfl_scale
+            if (dt == None and self.simSteps() % 100 == 0):
+                local_dt = self.computeDt()
         
             # Compute timestep for "this" iteration (i.e., shorten last timestep)
-            dt = np.float32(min(dt, t_end-self.simTime()))
+            local_dt = np.float32(min(local_dt*self.cfl_scale, t_end-self.simTime()))
 
             # Stop if end reached (should not happen)
-            if (dt <= 0.0):
+            if (local_dt <= 0.0):
                 self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
                 break
         
             # Step forward in time
-            self.step(dt)
+            self.step(local_dt)
 
             #Print info
-            print_string = printer.getPrintString(t_end - self.simTime())
+            print_string = printer.getPrintString(self.simTime() - t_start)
             if (print_string):
                 self.logger.info("%s: %s", self, print_string)
                 try:

@@ -22,6 +22,83 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from GPUSimulators.Simulator import BoundaryCondition
 import numpy as np
+import gc
+
+
+
+def downsample(highres_solution, x_factor, y_factor=None):
+    if (y_factor == None):
+        y_factor = x_factor
+
+    assert(highres_solution.shape[1] % x_factor == 0)
+    assert(highres_solution.shape[0] % y_factor == 0)
+    
+    if (x_factor*y_factor == 1):
+        return highres_solution
+    
+    if (len(highres_solution.shape) == 1):
+        highres_solution = highres_solution.reshape((1, highres_solution.size))
+
+    nx = highres_solution.shape[1] / x_factor
+    ny = highres_solution.shape[0] / y_factor
+
+    return highres_solution.reshape([int(ny), int(y_factor), int(nx), int(x_factor)]).mean(3).mean(1)
+
+
+
+
+    
+def bump(nx, ny, width, height, bump_size=None, h_ref=0.5, h_amp=0.1, u_ref=0.0, u_amp=0.1, v_ref=0.0, v_amp=0.1, ref_nx=None, ref_ny=None):
+    
+    if (ref_nx == None):
+        ref_nx = nx
+    assert(ref_nx >= nx)
+      
+    if (ref_ny == None):
+        ref_ny = ny
+    assert(ref_ny >= ny)
+        
+    if (bump_size == None):
+        bump_size = width/5.0
+    
+    ref_dx = width / float(ref_nx)
+    ref_dy = height / float(ref_ny)
+
+    x_center = ref_dx*ref_nx/2.0
+    y_center = ref_dy*ref_ny/2.0
+    
+    x = ref_dx*(np.arange(0, ref_nx, dtype=np.float32)+0.5) - x_center
+    y = ref_dy*(np.arange(0, ref_ny, dtype=np.float32)+0.5) - y_center
+    xv, yv = np.meshgrid(x, y, sparse=False, indexing='xy')
+    r = np.sqrt(xv**2 + yv**2)
+    xv = None
+    yv = None
+    gc.collect()
+    
+    #Generate highres then downsample
+    #h_highres = 0.5 + 0.1*np.exp(-(xv**2/size + yv**2/size))
+    h_highres = h_ref + h_amp*0.5*(1.0 + np.cos(np.pi*r/bump_size)) * (r < bump_size)
+    h = downsample(h_highres, ref_nx/nx, ref_ny/ny)
+    h_highres = None
+    gc.collect()
+    
+    #hu_highres = 0.1*np.exp(-(xv**2/size + yv**2/size))
+    u_highres = u_ref + u_amp*0.5*(1.0 + np.cos(np.pi*r/bump_size)) * (r < bump_size)
+    hu = downsample(u_highres, ref_nx/nx, ref_ny/ny)*h
+    u_highres = None
+    gc.collect()
+    
+    #hu_highres = 0.1*np.exp(-(xv**2/size + yv**2/size))
+    v_highres = v_ref + v_amp*0.5*(1.0 + np.cos(np.pi*r/bump_size)) * (r < bump_size)
+    hv = downsample(v_highres, ref_nx/nx, ref_ny/ny)*h
+    v_highres = None
+    gc.collect()
+    
+    dx = width/nx
+    dy = height/ny
+    
+    return h, hu, hv, dx, dy
+
 
 def genShockBubble(nx, ny, gamma):
     """
@@ -61,13 +138,8 @@ def genShockBubble(nx, ny, gamma):
     p = np.where(left, 10.0, p)
     E = 0.5*rho*(u**2+v**2) + p/(gamma-1.0)
     
-    #Estimate dt
-    scale = 0.45
-    max_rho_estimate = 5.0
-    max_u_estimate = 5.0
     dx = width/nx
     dy = height/ny
-    dt = scale * min(dx, dy) / (max_u_estimate + np.sqrt(gamma*max_rho_estimate))
 
     bc = BoundaryCondition({
         'north': BoundaryCondition.Type.Reflective,
@@ -80,7 +152,7 @@ def genShockBubble(nx, ny, gamma):
     arguments = {
         'rho': rho, 'rho_u': rho*u, 'rho_v': rho*v, 'E': E,
         'nx': nx, 'ny': ny,
-        'dx': dx, 'dy': dy, 'dt': dt,
+        'dx': dx, 'dy': dy, 
         'g': g,
         'gamma': gamma,
         'boundary_conditions': bc
@@ -169,13 +241,8 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
     
     E = 0.5*rho*(u**2+v**2) + p/(gamma-1.0)
     
-    #Estimate dt
-    scale = 0.9
-    max_rho_estimate = 3.0
-    max_u_estimate = 2.0
     dx = width/nx
     dy = height/ny
-    dt = scale * min(dx, dy) / (max_u_estimate + np.sqrt(gamma*max_rho_estimate))
     
     
     bc = BoundaryCondition({
@@ -189,7 +256,7 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
     arguments = {
         'rho': rho, 'rho_u': rho*u, 'rho_v': rho*v, 'E': E,
         'nx': nx, 'ny': ny,
-        'dx': dx, 'dy': dy, 'dt': dt,
+        'dx': dx, 'dy': dy, 
         'g': g,
         'gamma': gamma,
         'boundary_conditions': bc
@@ -233,13 +300,8 @@ def genRayleighTaylor(nx, ny, gamma, version=0):
     p = 2.5 - rho*g*yv
     E = 0.5*rho*(u**2+v**2) + p/(gamma-1.0)
     
-    #Estimate dt
-    scale = 0.9
-    max_rho_estimate = 3.0
-    max_u_estimate = 1.0
     dx = width/nx
     dy = height/ny
-    dt = scale * min(dx, dy) / (max_u_estimate + np.sqrt(gamma*max_rho_estimate))
     
     bc = BoundaryCondition({
         'north': BoundaryCondition.Type.Reflective,
@@ -252,7 +314,7 @@ def genRayleighTaylor(nx, ny, gamma, version=0):
     arguments = {
         'rho': rho, 'rho_u': rho*u, 'rho_v': rho*v, 'E': E,
         'nx': nx, 'ny': ny,
-        'dx': dx, 'dy': dy, 'dt': dt,
+        'dx': dx, 'dy': dy, 
         'g': g,
         'gamma': gamma,
         'boundary_conditions': bc
