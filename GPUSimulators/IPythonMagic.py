@@ -29,7 +29,7 @@ from GPUSimulators import Common, CudaContext
 
 
 @magics_class
-class MyIPythonMagic(Magics): 
+class MagicCudaContext(Magics): 
     @line_magic
     @magic_arguments.magic_arguments()
     @magic_arguments.argument(
@@ -97,9 +97,9 @@ class MyIPythonMagic(Magics):
         
         
         
+@magics_class
+class MagicLogger(Magics): 
     logger_initialized = False
-    
-    
     
     @line_magic
     @magic_arguments.magic_arguments()
@@ -141,6 +141,27 @@ class MyIPythonMagic(Magics):
 
 
 
+        
+
+
+@magics_class
+class MagicMPI(Magics): 
+    cluster = None
+    
+    @line_magic
+    @magic_arguments.magic_arguments()
+    @magic_arguments.argument(
+        '--num_engines', '-n', type=int, default=4, help='Number of engines to start')
+    def setup_mpi(self, line):
+        args = magic_arguments.parse_argstring(self.setup_mpi, line)
+        
+        logger = logging.getLogger('')
+        if (self.cluster != None):
+            logger.warning("MPI alreay set up, resetting")
+            self.cluster = None
+        self.cluster = Common.IPEngine(args.num_engines)
+
+        
 
 
 
@@ -149,5 +170,7 @@ class MyIPythonMagic(Magics):
 
 # Register 
 ip = get_ipython()
-ip.register_magics(MyIPythonMagic)
+ip.register_magics(MagicCudaContext)
+ip.register_magics(MagicLogger)
+ip.register_magics(MagicMPI)
 
