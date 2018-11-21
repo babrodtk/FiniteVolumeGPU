@@ -308,31 +308,9 @@ class CudaArray2D:
         assert not np.isfortran(cpu_data), "Wrong datatype (Fortran, expected C)"
 
         #Create copy object from host to device
-        copy = cuda.Memcpy2D()
-        copy.set_src_host(cpu_data)
-        copy.set_dst_device(self.data.gpudata)
-            
-        #Set offsets of upload in destination
-        # This handles the cases where cpu_data contains ghost cell values
-        # and also when it does not
-        x_offset = (nx_halo - cpu_data.shape[1]) // 2
-        y_offset = (ny_halo - cpu_data.shape[0]) // 2
-        copy.dst_x_in_bytes = x_offset*self.data.strides[1]
-        copy.dst_y = y_offset
-        
-        #Set destination pitch
-        copy.dst_pitch = self.data.strides[0]
-        
-        #Set width in bytes to copy for each row and
-        #number of rows to copy
-        width = max(self.nx, cpu_data.shape[1])
-        height = max(self.ny, cpu_data.shape[0])
-        copy.width_in_bytes = width*cpu_data.itemsize
-        copy.height = height
-        
-        #Perform the copy
-        copy(stream)
-        
+        x = (nx_halo - cpu_data.shape[1]) // 2
+        y = (ny_halo - cpu_data.shape[0]) // 2
+        self.upload(stream, cpu_data, extent=[x, y, cpu_data.shape[1], cpu_data.shape[0]])
         #self.logger.debug("Buffer <%s> [%dx%d]: Allocated ", int(self.data.gpudata), self.nx, self.ny)
         
         
@@ -344,19 +322,25 @@ class CudaArray2D:
     """
     Enables downloading data from GPU to Python
     """
-    def download(self, stream, async=False, extent=None):
-        if (extent == None):
+    def download(self, stream, cpu_data=None, async=False, extent=None):
+        if (extent is None):
             x = self.x_halo
             y = self.y_halo
             nx = self.nx
             ny = self.ny
         else:
             x, y, nx, ny = extent
-    
-        #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
-        #Allocate host memory
-        #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
-        cpu_data = np.empty((ny, nx), dtype=np.float32)
+            
+        if (cpu_data is None):
+            #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
+            #Allocate host memory
+            #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
+            cpu_data = np.empty((ny, nx), dtype=np.float32)
+            
+        assert nx == cpu_data.shape[1]
+        assert ny == cpu_data.shape[0]
+        assert x+nx <= self.nx + 2*self.x_halo
+        assert y+ny <= self.ny + 2*self.y_halo
         
         #Create copy object from device to host
         copy = cuda.Memcpy2D()
@@ -380,8 +364,8 @@ class CudaArray2D:
         return cpu_data
         
         
-    def upload(self, cpu_data, stream, extent=None):
-        if (extent == None):
+    def upload(self, stream, cpu_data, extent=None):
+        if (extent is None):
             x = self.x_halo
             y = self.y_halo
             nx = self.nx
