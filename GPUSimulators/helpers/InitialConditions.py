@@ -48,7 +48,11 @@ def downsample(highres_solution, x_factor, y_factor=None):
 
 
     
-def bump(nx, ny, width, height, bump_size=None, h_ref=0.5, h_amp=0.1, u_ref=0.0, u_amp=0.1, v_ref=0.0, v_amp=0.1, ref_nx=None, ref_ny=None):
+def bump(nx, ny, width, height, 
+        bump_size=None, 
+        ref_nx=None, ref_ny=None,
+        x_center=0.5, y_center=0.5,
+        h_ref=0.5, h_amp=0.1, u_ref=0.0, u_amp=0.1, v_ref=0.0, v_amp=0.1):
     
     if (ref_nx == None):
         ref_nx = nx
@@ -64,8 +68,8 @@ def bump(nx, ny, width, height, bump_size=None, h_ref=0.5, h_amp=0.1, u_ref=0.0,
     ref_dx = width / float(ref_nx)
     ref_dy = height / float(ref_ny)
 
-    x_center = ref_dx*ref_nx/2.0
-    y_center = ref_dy*ref_ny/2.0
+    x_center = ref_dx*ref_nx*x_center
+    y_center = ref_dy*ref_ny*y_center
     
     x = ref_dx*(np.arange(0, ref_nx, dtype=np.float32)+0.5) - x_center
     y = ref_dy*(np.arange(0, ref_ny, dtype=np.float32)+0.5) - y_center

@@ -129,9 +129,16 @@ class MagicLogger(Magics):
             logger.addHandler(ch)
             logger.log(args.level, "Console logger using level %s", logging.getLevelName(args.level))
             
+            #Get the outfilename (try to evaluate if Python expression...)
+            try:
+                outfile = eval(args.out, self.shell.user_global_ns, self.shell.user_ns)
+            except:
+                outfile = args.out
+            
             #Add log to file
-            logger.log(args.level, "File logger using level %s to %s", logging.getLevelName(args.file_level), args.out)
-            fh = logging.FileHandler(args.out)
+            logger.log(args.level, "File logger using level %s to %s", logging.getLevelName(args.file_level), outfile)
+            
+            fh = logging.FileHandler(outfile)
             formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s: %(message)s')
             fh.setFormatter(formatter)
             fh.setLevel(args.file_level)
@@ -161,6 +168,12 @@ class MagicMPI(Magics):
             self.cluster = None
         self.cluster = Common.IPEngine(args.num_engines)
 
+        # Handle CUDA context when exiting python
+        import atexit
+        def exitfunc():
+            self.logger.info("Exitfunc: Resetting MPI cluster")
+            self.cluster = None
+        atexit.register(exitfunc)
         
 
 

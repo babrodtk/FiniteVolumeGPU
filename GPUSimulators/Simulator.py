@@ -53,11 +53,11 @@ class BoundaryCondition(object):
 
 
 
-    def __init__(self, types={ \
-                    'north': Type.Reflective, \
-                    'south': Type.Reflective, \
-                    'east': Type.Reflective, \
-                    'west': Type.Reflective \
+    def __init__(self, types={ 
+                    'north': Type.Reflective, 
+                    'south': Type.Reflective, 
+                    'east': Type.Reflective, 
+                    'west': Type.Reflective 
                  }):
         """
         Constructor
@@ -170,25 +170,24 @@ class BaseSimulator(object):
         t_start = self.simTime()
         t_end = t_start + t
         
-        local_dt = dt
-        
-        if (local_dt == None):
-            local_dt = self.computeDt()
+        update_dt = False
+        if (dt == None):
+            update_dt = True
         
         while(self.simTime() < t_end):
-            if (dt == None and self.simSteps() % 100 == 0):
-                local_dt = self.computeDt()
+            if (update_dt and (self.simSteps() % 100 == 0)):
+                dt = self.computeDt()*self.cfl_scale
         
             # Compute timestep for "this" iteration (i.e., shorten last timestep)
-            local_dt = np.float32(min(local_dt*self.cfl_scale, t_end-self.simTime()))
+            dt = np.float32(min(dt, t_end-self.simTime()))
 
             # Stop if end reached (should not happen)
-            if (local_dt <= 0.0):
+            if (dt <= 0.0):
                 self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
                 break
         
             # Step forward in time
-            self.step(local_dt)
+            self.step(dt)
 
             #Print info
             print_string = printer.getPrintString(self.simTime() - t_start)
@@ -197,7 +196,7 @@ class BaseSimulator(object):
                 try:
                     self.check()
                 except AssertionError as e:
-                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()))
+                    e.args += ("Step={:d}, time={:f}".format(self.simSteps(), self.simTime()),)
                     raise
 
 

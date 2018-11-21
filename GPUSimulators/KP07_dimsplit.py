@@ -138,4 +138,4 @@ class KP07_dimsplit(Simulator.BaseSimulator):
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt*0.5
+        return max_dt

@@ -115,15 +115,17 @@ class IPEngine(object):
 
         # attach to a running cluster
         import ipyparallel
-        cluster = ipyparallel.Client()#profile='mpi')
-        while(len(cluster.ids) != n_engines):
+        self.cluster = ipyparallel.Client()#profile='mpi')
+        while(len(self.cluster.ids) != n_engines):
             time.sleep(0.5)
             self.logger.info("Waiting for cluster...")
-            cluster = ipyparallel.Client()#profile='mpi')
+            self.cluster = ipyparallel.Client()#profile='mpi')
         
         self.logger.info("Done")
         
     def __del__(self):
+        self.cluster.shutdown(hub=True)
+        
         self.e.terminate()
         try:
             self.e.communicate(timeout=3)
@@ -136,6 +138,11 @@ class IPEngine(object):
         self.logger.info("IPEngine cout: {:s}".format(cout))
         self.logger.info("IPEngine cerr: {:s}".format(cerr))
         
+        
+        while(len(self.cluster.ids) != 0):
+            time.sleep(0.5)
+            self.logger.info("Waiting for cluster to shutdown...")
+            
         
         self.c.terminate()
         try:
@@ -337,11 +344,19 @@ class CudaArray2D:
     """
     Enables downloading data from GPU to Python
     """
-    def download(self, stream, async=False):
+    def download(self, stream, async=False, extent=None):
+        if (extent == None):
+            x = self.x_halo
+            y = self.y_halo
+            nx = self.nx
+            ny = self.ny
+        else:
+            x, y, nx, ny = extent
+    
         #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
         #Allocate host memory
         #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
-        cpu_data = np.empty((self.ny, self.nx), dtype=np.float32)
+        cpu_data = np.empty((ny, nx), dtype=np.float32)
         
         #Create copy object from device to host
         copy = cuda.Memcpy2D()
@@ -349,20 +364,52 @@ class CudaArray2D:
         copy.set_dst_host(cpu_data)
         
         #Set offsets and pitch of source
-        copy.src_x_in_bytes = self.x_halo*self.data.strides[1]
-        copy.src_y = self.y_halo
+        copy.src_x_in_bytes = x*self.data.strides[1]
+        copy.src_y = y
         copy.src_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        copy.width_in_bytes = self.nx*cpu_data.itemsize
-        copy.height = self.ny
+        copy.width_in_bytes = nx*cpu_data.itemsize
+        copy.height = ny
         
         copy(stream)
         if async==False:
             stream.synchronize()
         
         return cpu_data
+        
+        
+    def upload(self, cpu_data, stream, extent=None):
+        if (extent == None):
+            x = self.x_halo
+            y = self.y_halo
+            nx = self.nx
+            ny = self.ny
+        else:
+            x, y, nx, ny = extent
+            
+        assert(nx == cpu_data.shape[1])
+        assert(ny == cpu_data.shape[0])
+        assert(x+nx <= self.nx + 2*self.x_halo)
+        assert(y+ny <= self.ny + 2*self.y_halo)
+         
+        #Create copy object from device to host
+        copy = cuda.Memcpy2D()
+        copy.set_dst_device(self.data.gpudata)
+        copy.set_src_host(cpu_data)
+        
+        #Set offsets and pitch of source
+        copy.dst_x_in_bytes = x*self.data.strides[1]
+        copy.dst_y = y
+        copy.dst_pitch = self.data.strides[0]
+        
+        #Set width in bytes to copy for each row and
+        #number of rows to copy
+        copy.width_in_bytes = nx*cpu_data.itemsize
+        copy.height = ny
+        
+        copy(stream)
 
         
         
