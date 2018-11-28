@@ -106,6 +106,7 @@ class BaseSimulator(object):
                  nx, ny, 
                  dx, dy, 
                  cfl_scale,
+                 num_substeps,
                  block_width, block_height):
         """
         Initialization routine
@@ -119,6 +120,8 @@ class BaseSimulator(object):
         dx: Grid cell spacing along x-axis (20 000 m)
         dy: Grid cell spacing along y-axis (20 000 m)
         dt: Size of each timestep (90 s)
+        cfl_scale: Courant number
+        num_substeps: Number of substeps to perform for a full step
         """
         #Get logger
         self.logger = logging.getLogger(__name__ + "." + self.__class__.__name__)
@@ -132,6 +135,7 @@ class BaseSimulator(object):
         self.dx = np.float32(dx)
         self.dy = np.float32(dy)
         self.cfl_scale = cfl_scale
+        self.num_substeps = num_substeps
         
         #Handle autotuning block size
         if (self.context.autotuner):
@@ -203,6 +207,16 @@ class BaseSimulator(object):
     def step(self, dt):
         """
         Function which performs one single timestep of size dt
+        """
+        for i in range(self.num_substeps):
+            self.substep(dt, i)
+            
+        self.t += dt
+        self.nt += 1
+        
+    def substep(self, dt, step_number):
+        """
+        Function which performs one single substep with stepsize dt
         """
         raise(NotImplementedError("Needs to be implemented in subclass"))
 

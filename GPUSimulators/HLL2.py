@@ -66,6 +66,7 @@ class HLL2 (Simulator.BaseSimulator):
             nx, ny, 
             dx, dy, 
             cfl_scale,
+            2,
             block_width, block_height);
         self.g = np.float32(g) 
         self.theta = np.float32(theta)
@@ -101,12 +102,8 @@ class HLL2 (Simulator.BaseSimulator):
         dt = min(dt_x, dt_y)
         self.cfl_data.fill(dt, stream=self.stream)
         
-    def step(self, dt):
-        self.substepDimsplit(dt*0.5, 0)
-        self.substepDimsplit(dt*0.5, 1)
-        
-        self.t += dt
-        self.nt += 2
+    def substep(self, dt, step_number):
+        self.substepDimsplit(dt*0.5, step_number)
                 
     def substepDimsplit(self, dt, substep):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 

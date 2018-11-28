@@ -68,6 +68,7 @@ class KP07 (Simulator.BaseSimulator):
             nx, ny, 
             dx, dy, 
             cfl_scale,
+            order,
             block_width, block_height);
         self.g = np.float32(g)             
         self.theta = np.float32(theta) 
@@ -104,16 +105,8 @@ class KP07 (Simulator.BaseSimulator):
         self.cfl_data.fill(dt, stream=self.stream)
                         
         
-    def step(self, dt):
-        if (self.order == 1):
-            self.substepRK(dt, substep=0)
-        elif (self.order == 2):
-            self.substepRK(dt, substep=0)
-            self.substepRK(dt, substep=1)
-        else:
-            raise(NotImplementedError("Order {:d} is not implemented".format(self.order)))
-        self.t += dt
-        self.nt += 1
+    def substep(self, dt, step_number):
+            self.substepRK(dt, step_number)
 
         
     def substepRK(self, dt, substep):

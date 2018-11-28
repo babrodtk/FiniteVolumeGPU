@@ -68,6 +68,7 @@ class KP07_dimsplit(Simulator.BaseSimulator):
             nx, ny, 
             dx, dy, 
             cfl_scale,
+            2, 
             block_width, block_height)
         self.gc_x = 2
         self.gc_y = 2
@@ -104,12 +105,8 @@ class KP07_dimsplit(Simulator.BaseSimulator):
         dt = min(dt_x, dt_y)
         self.cfl_data.fill(dt, stream=self.stream)
     
-    def step(self, dt):
-        self.substepDimsplit(dt*0.5, 0)
-        self.substepDimsplit(dt*0.5, 1)
-        
-        self.t += dt
-        self.nt += 2
+    def substep(self, dt, step_number):
+        self.substepDimsplit(dt*0.5, step_number)
     
     def substepDimsplit(self, dt, substep):
         self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
@@ -127,15 +124,14 @@ class KP07_dimsplit(Simulator.BaseSimulator):
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0],
                 self.cfl_data.gpudata)
         self.u0, self.u1 = self.u1, self.u0
-    
-        
+
     def download(self):
         return self.u0.download(self.stream)
-        
+
     def check(self):
         self.u0.check()
         self.u1.check()
-        
+
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
-        return max_dt
+        return max_dt*0.5
