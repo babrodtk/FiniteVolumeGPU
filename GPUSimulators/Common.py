@@ -24,6 +24,7 @@ import os
 
 import numpy as np
 import time
+import signal
 import subprocess
 import tempfile
 import re
@@ -102,7 +103,11 @@ class IPEngine(object):
         self.logger.info("Starting IPController")
         self.c_buff = PopenFileBuffer()
         c_cmd = ["ipcontroller",  "--ip='*'"]
-        self.c = subprocess.Popen(c_cmd, stderr=self.c_buff.stderr, stdout=self.c_buff.stdout, shell=False)
+        self.c = subprocess.Popen(c_cmd, 
+                stderr=self.c_buff.stderr, 
+                stdout=self.c_buff.stdout, 
+                shell=False,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
         
         #Wait until controller is running
         time.sleep(3)
@@ -111,11 +116,16 @@ class IPEngine(object):
         self.logger.info("Starting IPEngines")
         self.e_buff = PopenFileBuffer()
         e_cmd = ["mpiexec", "-n", str(n_engines), "ipengine", "--mpi"]
-        self.e = subprocess.Popen(e_cmd, stderr=self.e_buff.stderr, stdout=self.e_buff.stdout, shell=False)
+        self.e = subprocess.Popen(e_cmd, 
+                stderr=self.e_buff.stderr, 
+                stdout=self.e_buff.stdout, 
+                shell=False,
+                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
 
         # attach to a running cluster
         import ipyparallel
         self.cluster = ipyparallel.Client()#profile='mpi')
+        time.sleep(3)
         while(len(self.cluster.ids) != n_engines):
             time.sleep(0.5)
             self.logger.info("Waiting for cluster...")
@@ -124,37 +134,51 @@ class IPEngine(object):
         self.logger.info("Done")
         
     def __del__(self):
-        self.cluster.shutdown(hub=True)
-        
-        self.e.terminate()
-        try:
-            self.e.communicate(timeout=3)
-        except TimeoutExpired:
-            self.logger.warn("Killing IPEngine")
-            self.e.kill()
-            self.e.communicate()
+        self.shutdown()
+    
+    def shutdown(self):
+        if (self.e is not None):
+            if (os.name == 'nt'):
+                self.logger.warn("Sending CTRL+C to IPEngine")
+                self.e.send_signal(signal.CTRL_C_EVENT)
+                
+            try:
+                self.e.communicate(timeout=3)
+                self.e.kill()
+            except subprocess.TimeoutExpired:
+                self.logger.warn("Killing IPEngine")
+                self.e.kill()
+                self.e.communicate()
+            self.e = None
+                
+            cout, cerr = self.e_buff.read()
+            self.logger.info("IPEngine cout: {:s}".format(cout))
+            self.logger.info("IPEngine cerr: {:s}".format(cerr))
+            self.e_buff = None
             
-        cout, cerr = self.e_buff.read()
-        self.logger.info("IPEngine cout: {:s}".format(cout))
-        self.logger.info("IPEngine cerr: {:s}".format(cerr))
-        
-        
-        while(len(self.cluster.ids) != 0):
-            time.sleep(0.5)
-            self.logger.info("Waiting for cluster to shutdown...")
+            gc.collect()
             
+        if (self.c is not None):
+            if (os.name == 'nt'):
+                self.logger.warn("Sending CTRL+C to IPController")
+                self.c.send_signal(signal.CTRL_C_EVENT)
+                
+            try:
+                self.c.communicate(timeout=3)
+                self.c.kill()
+            except subprocess.TimeoutExpired:
+                self.logger.warn("Killing IPController")
+                self.c.kill()
+                self.c.communicate()
+            self.c = None
+                
+            cout, cerr = self.c_buff.read()
+            self.logger.info("IPController cout: {:s}".format(cout))
+            self.logger.info("IPController cerr: {:s}".format(cerr))
+            self.c_buff = None
         
-        self.c.terminate()
-        try:
-            self.c.communicate(timeout=3)
-        except TimeoutExpired:
-            self.logger.warn("Killing IPController")
-            self.c.kill()
-            self.c.communicate()
-            
-        cout, cerr = self.c_buff.read()
-        self.logger.info("IPController cout: {:s}".format(cout))
-        self.logger.info("IPController cerr: {:s}".format(cerr))
+            gc.collect()
+        
 
             
         
@@ -348,14 +372,14 @@ class CudaArray2D:
         copy.set_dst_host(cpu_data)
         
         #Set offsets and pitch of source
-        copy.src_x_in_bytes = x*self.data.strides[1]
-        copy.src_y = y
+        copy.src_x_in_bytes = int(x)*self.data.strides[1]
+        copy.src_y = int(y)
         copy.src_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        copy.width_in_bytes = nx*cpu_data.itemsize
-        copy.height = ny
+        copy.width_in_bytes = int(nx)*cpu_data.itemsize
+        copy.height = int(ny)
         
         copy(stream)
         if async==False:
@@ -384,14 +408,14 @@ class CudaArray2D:
         copy.set_src_host(cpu_data)
         
         #Set offsets and pitch of source
-        copy.dst_x_in_bytes = x*self.data.strides[1]
-        copy.dst_y = y
+        copy.dst_x_in_bytes = int(x)*self.data.strides[1]
+        copy.dst_y = int(y)
         copy.dst_pitch = self.data.strides[0]
         
         #Set width in bytes to copy for each row and
         #number of rows to copy
-        copy.width_in_bytes = nx*cpu_data.itemsize
-        copy.height = ny
+        copy.width_in_bytes = int(nx)*cpu_data.itemsize
+        copy.height = int(ny)
         
         copy(stream)
 

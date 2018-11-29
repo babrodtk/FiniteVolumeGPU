@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 import logging
+import gc
 
 from IPython.core import magic_arguments
 from IPython.core.magic import line_magic, Magics, magics_class
@@ -111,7 +112,7 @@ class MagicLogger(Magics):
         '--file_level', '-f', type=int, default=10, help='The level of logging to file [0, 50]')
     def setup_logging(self, line):
         if (self.logger_initialized):
-            logging.getLogger('').info("Global logger already initialized!")
+            logging.getLogger('GPUSimulators').info("Global logger already initialized!")
             return;
         else:
             self.logger_initialized = True
@@ -120,7 +121,7 @@ class MagicLogger(Magics):
             import sys
             
             #Get root logger
-            logger = logging.getLogger('')
+            logger = logging.getLogger('GPUSimulators')
             logger.setLevel(min(args.level, args.file_level))
 
             #Add log to screen
@@ -153,27 +154,23 @@ class MagicLogger(Magics):
 
 @magics_class
 class MagicMPI(Magics): 
-    cluster = None
     
     @line_magic
     @magic_arguments.magic_arguments()
     @magic_arguments.argument(
+        'name', type=str, help='Name of context to create')
+    @magic_arguments.argument(
         '--num_engines', '-n', type=int, default=4, help='Number of engines to start')
     def setup_mpi(self, line):
         args = magic_arguments.parse_argstring(self.setup_mpi, line)
-        
-        logger = logging.getLogger('')
-        if (self.cluster != None):
+        logger = logging.getLogger('GPUSimulators')
+        if args.name in self.shell.user_ns.keys():
             logger.warning("MPI alreay set up, resetting")
-            self.cluster = None
-        self.cluster = Common.IPEngine(args.num_engines)
+            self.shell.user_ns[args.name].shutdown()
+            self.shell.user_ns[args.name] = None
+            gc.collect()
+        self.shell.user_ns[args.name] = Common.IPEngine(args.num_engines)
 
-        # Handle CUDA context when exiting python
-        import atexit
-        def exitfunc():
-            self.logger.info("Exitfunc: Resetting MPI cluster")
-            self.cluster = None
-        atexit.register(exitfunc)
         
 
 

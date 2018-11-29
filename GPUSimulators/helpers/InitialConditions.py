@@ -185,7 +185,7 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
         dy = 1.0 / ny
 
         def genSmoothRandom(nx, n):
-            assert (n <= nx), "Number of generated points nx must be larger than n"
+            n = max(1, min(n, nx))
             
             if n == nx:
                 return np.random.random(nx)-0.5
@@ -195,7 +195,17 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
                 #Control points and interpolator
                 xp = np.linspace(0.0, 1.0, n)
                 yp = np.random.random(n) - 0.5
-                f = interp1d(xp, yp, kind='cubic')
+                
+                if (n == 1):
+                    kind = 'nearest'
+                elif (n == 2):
+                    kind = 'linear'
+                elif (n == 3):
+                    kind = 'quadratic'
+                else:
+                    kind = 'cubic'
+                    
+                f = interp1d(xp, yp, kind=kind)
 
                 #Interpolation points
                 x = np.linspace(0.0, 1.0, nx)

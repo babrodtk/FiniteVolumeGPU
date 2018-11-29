@@ -57,7 +57,7 @@ class MPISimulator(Simulator.BaseSimulator):
         self.gc_y = int(self.sim.u0[0].y_halo)
         self.nx = int(self.sim.nx)
         self.ny = int(self.sim.ny)
-        self.nvars = 3
+        self.nvars = len(self.sim.u0.gpu_variables)
         
         #Allocate data for receiving
         #Note that east and west also transfer ghost cells
@@ -68,44 +68,45 @@ class MPISimulator(Simulator.BaseSimulator):
         self.in_s = np.empty((self.nvars,             self.gc_y,   self.nx), dtype=np.float32)
         
         #Allocate data for sending
-        self.out_e = np.empty((self.nvars, self.ny + 2*self.gc_y, self.gc_x), dtype=np.float32)
-        self.out_w = np.empty((self.nvars, self.ny + 2*self.gc_y, self.gc_x), dtype=np.float32)
-        self.out_n = np.empty((self.nvars,             self.gc_y,   self.nx), dtype=np.float32)
-        self.out_s = np.empty((self.nvars,             self.gc_y,   self.nx), dtype=np.float32)
+        self.out_e = np.empty_like(self.in_e)
+        self.out_w = np.empty_like(self.in_w)
+        self.out_n = np.empty_like(self.in_n)
+        self.out_s = np.empty_like(self.in_s)
         
         #Set regions for ghost cells to read from
-        self.read_e = [  self.nx,         0, self.gc_x, self.ny + 2*self.gc_y]
-        self.read_w = [self.gc_x,         0, self.gc_x, self.ny + 2*self.gc_y]
-        self.read_n = [self.gc_x,   self.ny,   self.nx,             self.gc_y]
-        self.read_s = [self.gc_x, self.gc_y,   self.nx,             self.gc_y]
+        self.read_e = np.array([  self.nx,         0, self.gc_x, self.ny + 2*self.gc_y])
+        self.read_w = np.array([self.gc_x,         0, self.gc_x, self.ny + 2*self.gc_y])
+        self.read_n = np.array([self.gc_x,   self.ny,   self.nx,             self.gc_y])
+        self.read_s = np.array([self.gc_x, self.gc_y,   self.nx,             self.gc_y])
         
         #Set regions for ghost cells to write to
-        self.write_e = [self.nx+self.gc_x,                 0, self.gc_x, self.ny + 2*self.gc_y]
-        self.write_w = [                0,                 0, self.gc_x, self.ny + 2*self.gc_y]
-        self.write_n = [        self.gc_x, self.ny+self.gc_y,   self.nx,             self.gc_y]
-        self.write_s = [        self.gc_x,                 0,   self.nx,             self.gc_y]
-        
-        #Initialize ghost cells
-        self.exchange()
+        self.write_e = self.read_e + np.array([self.gc_x, 0, 0, 0])
+        self.write_w = self.read_w - np.array([self.gc_x, 0, 0, 0])
+        self.write_n = self.read_n + np.array([0, self.gc_y, 0, 0])
+        self.write_s = self.read_s - np.array([0, self.gc_y, 0, 0])
         
         self.logger.debug("Simlator rank {:d} created ".format(self.rank))
     
         
     def substep(self, dt, step_number):
-        self.sim.substep(dt, step_number)
         self.exchange()
+        self.sim.substep(dt, step_number)
     
     def download(self):
-        raise(NotImplementedError("Needs to be implemented!"))
-    
+        return self.sim.download()
+        
     def synchronize(self):
-        raise(NotImplementedError("Needs to be implemented!"))
-    
+        self.sim.synchronize()
+        
     def check(self):
         return self.sim.check()
         
     def computeDt(self):
-        raise(NotImplementedError("Needs to be implemented!"))
+        local_dt = np.array([np.float32(self.sim.computeDt())]);
+        global_dt = np.empty(1, dtype=np.float32)
+        self.comm.Allreduce(local_dt, global_dt, op=MPI.MIN)
+        self.logger.debug("Local dt: {:f}, global dt: {:f}".format(local_dt[0], global_dt[0]))
+        return global_dt[0]        
         
     def exchange(self):
         #Shorthands for dimensions
@@ -126,13 +127,13 @@ class MPISimulator(Simulator.BaseSimulator):
         
         #Send to north/south neighbours
         comm_send = []
-        comm_send += [self.comm.Isend(self.out_n, dest=self.north, tag=0)]
-        comm_send += [self.comm.Isend(self.out_s, dest=self.south, tag=1)]
+        comm_send += [self.comm.Isend(self.out_n, dest=self.north, tag=4*self.nt + 0)]
+        comm_send += [self.comm.Isend(self.out_s, dest=self.south, tag=4*self.nt + 1)]
         
         #Receive from north/south neighbors
         comm_recv = []
-        comm_recv += [self.comm.Irecv(self.in_n, source=self.north, tag=1)]
-        comm_recv += [self.comm.Irecv(self.in_s, source=self.south, tag=0)]
+        comm_recv += [self.comm.Irecv(self.in_s, source=self.south, tag=4*self.nt + 0)]
+        comm_recv += [self.comm.Irecv(self.in_n, source=self.north, tag=4*self.nt + 1)]
         
         #Wait for incoming transfers to complete
         for comm in comm_recv:
@@ -163,13 +164,13 @@ class MPISimulator(Simulator.BaseSimulator):
         
         #Send to east/west neighbours
         comm_send = []
-        comm_send += [self.comm.Isend(self.out_e, dest=self.east, tag=2)]
-        comm_send += [self.comm.Isend(self.out_w, dest=self.west, tag=3)]
+        comm_send += [self.comm.Isend(self.out_e, dest=self.east, tag=4*self.nt + 2)]
+        comm_send += [self.comm.Isend(self.out_w, dest=self.west, tag=4*self.nt + 3)]
         
         #Receive from east/west neighbors
         comm_recv = []
-        comm_recv += [self.comm.Irecv(self.in_e, source=self.east, tag=3)]
-        comm_recv += [self.comm.Irecv(self.in_w, source=self.west, tag=2)]
+        comm_recv += [self.comm.Irecv(self.in_w, source=self.west, tag=4*self.nt + 2)]
+        comm_recv += [self.comm.Irecv(self.in_e, source=self.east, tag=4*self.nt + 3)]
         
         #Wait for incoming transfers to complete
         for comm in comm_recv:
@@ -266,4 +267,8 @@ class MPISimulator(Simulator.BaseSimulator):
 
         #Pad with ones to guarantee num_factors
         factors = factors + [1]*(num_factors - len(factors))
+        
+        #Sort in descending order
+        factors = np.flip(np.sort(factors))
+        
         return factors

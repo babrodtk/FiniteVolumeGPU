@@ -134,6 +134,7 @@ class BaseSimulator(object):
         self.ny = np.int32(ny)
         self.dx = np.float32(dx)
         self.dy = np.float32(dy)
+        self.dt = None
         self.cfl_scale = cfl_scale
         self.num_substeps = num_substeps
         
@@ -174,24 +175,27 @@ class BaseSimulator(object):
         t_start = self.simTime()
         t_end = t_start + t
         
-        update_dt = False
-        if (dt == None):
-            update_dt = True
+        update_dt = True
+        if (dt is not None):
+            update_dt = False
+            self.dt = dt
         
         while(self.simTime() < t_end):
+            # Update dt every 100 timesteps and cross your fingers it works
+            # for the next 100
             if (update_dt and (self.simSteps() % 100 == 0)):
-                dt = self.computeDt()*self.cfl_scale
+                self.dt = self.computeDt()*self.cfl_scale
         
             # Compute timestep for "this" iteration (i.e., shorten last timestep)
-            dt = np.float32(min(dt, t_end-self.simTime()))
+            current_dt = np.float32(min(self.dt, t_end-self.simTime()))
 
             # Stop if end reached (should not happen)
-            if (dt <= 0.0):
+            if (current_dt <= 0.0):
                 self.logger.warning("Timestep size {:d} is less than or equal to zero!".format(self.simSteps()))
                 break
         
             # Step forward in time
-            self.step(dt)
+            self.step(current_dt)
 
             #Print info
             print_string = printer.getPrintString(self.simTime() - t_start)
