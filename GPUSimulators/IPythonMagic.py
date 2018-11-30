@@ -105,6 +105,8 @@ class MagicLogger(Magics):
     @line_magic
     @magic_arguments.magic_arguments()
     @magic_arguments.argument(
+        'name', type=str, help='Name of context to create')
+    @magic_arguments.argument(
         '--out', '-o', type=str, default='output.log', help='The filename to store the log to')
     @magic_arguments.argument(
         '--level', '-l', type=int, default=20, help='The level of logging to screen [0, 50]')
@@ -146,6 +148,7 @@ class MagicLogger(Magics):
             logger.addHandler(fh)
         
         logger.info("Python version %s", sys.version)
+        self.shell.user_ns[args.name] = logger
 
 
 
