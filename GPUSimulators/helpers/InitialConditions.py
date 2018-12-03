@@ -25,7 +25,32 @@ import numpy as np
 import gc
 
 
+def getExtent(width, height, nx, ny, grid):
+    if grid is not None:
+        gx = grid.grid[0]
+        gy = grid.grid[1]
+        i, j = grid.getCoordinate()
+        
+        dx = (width / gx) / nx
+        dy = (height / gy) / ny
+        
+        x0 = width*i/gx + 0.5*dx
+        y0 = height*j/gy + 0.5*dy
+        x1 = width*(i+1)/gx - 0.5*dx
+        y1 = height*(j+1)/gy - 0.5*dx
+        
+    else:
+        dx = width / nx
+        dy = height / ny
+        
+        x0 = 0.5*dx
+        y0 = 0.5*dy
+        x1 = width-0.5*dx
+        y1 = height-0.5*dy
+        
+    return [x0, x1, y0, y1, dx, dy]
 
+        
 def downsample(highres_solution, x_factor, y_factor=None):
     if (y_factor == None):
         y_factor = x_factor
@@ -104,15 +129,13 @@ def bump(nx, ny, width, height,
     return h, hu, hv, dx, dy
 
 
-def genShockBubble(nx, ny, gamma):
+def genShockBubble(nx, ny, gamma, grid=None):
     """
     Generate Shock-bubble interaction case for the Euler equations
     """
     
     width = 4.0
     height = 1.0
-    dx = width / float(nx)
-    dy = height / float(ny)
     g = 0.0
 
 
@@ -122,19 +145,21 @@ def genShockBubble(nx, ny, gamma):
     E = np.zeros((ny, nx), dtype=np.float32)
     p = np.ones((ny, nx), dtype=np.float32)
 
-    x_center = 0.5
-    y_center = 0.5
-    x = np.linspace(0.5*dx, nx*dx-0.5*dx, nx, dtype=np.float32) - x_center
-    y = np.linspace(0.5*dy, ny*dy-0.5*dy, ny, dtype=np.float32) - y_center
+    
+    x0, x1, y0, y1, dx, dy = getExtent(width, height, nx, ny, grid)
+    x = np.linspace(x0, x1, nx, dtype=np.float32)
+    y = np.linspace(y0, y1, ny, dtype=np.float32)
     xv, yv = np.meshgrid(x, y, sparse=False, indexing='xy')
        
     #Bubble
     radius = 0.25
-    bubble = np.sqrt(xv**2+yv**2) <= radius
+    x_center = 0.5
+    y_center = 0.5
+    bubble = np.sqrt((xv-x_center)**2+(yv-y_center)**2) <= radius
     rho = np.where(bubble, 0.1, rho)
     
     #Left boundary
-    left = (xv - xv.min() < 0.1)
+    left = (xv < 0.1)
     rho = np.where(left, 3.81250, rho)
     u = np.where(left, 2.57669, u)
     
@@ -142,8 +167,6 @@ def genShockBubble(nx, ny, gamma):
     p = np.where(left, 10.0, p)
     E = 0.5*rho*(u**2+v**2) + p/(gamma-1.0)
     
-    dx = width/nx
-    dy = height/ny
 
     bc = BoundaryCondition({
         'north': BoundaryCondition.Type.Reflective,
@@ -169,7 +192,7 @@ def genShockBubble(nx, ny, gamma):
     
     
     
-def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
+def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125, grid=None):
     """
     Roughness parameter in (0, 1.0] determines how "squiggly" 
     the interface betweeen the zones is
@@ -181,8 +204,6 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
         """
         zone = np.zeros((ny, nx), dtype=np.int32)
 
-        dx = 1.0 / nx
-        dy = 1.0 / ny
 
         def genSmoothRandom(nx, n):
             n = max(1, min(n, nx))
@@ -213,9 +234,9 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
 
 
 
-        x = np.linspace(0, 1, nx)
-        y = np.linspace(0, 1, ny)
-
+        x0, x1, y0, y1, _, _ = getExtent(1.0, 1.0, nx, ny, grid)
+        x = np.linspace(x0, x1, nx)
+        y = np.linspace(y0, y1, ny)
         _, y = np.meshgrid(x, y)
 
         #print(y+a[0])
@@ -230,8 +251,6 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
         
     width = 2.0
     height = 1.0
-    dx = width / float(nx)
-    dy = height / float(ny)
     g = 0.0
     gamma = 1.4
 
@@ -255,8 +274,7 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
     
     E = 0.5*rho*(u**2+v**2) + p/(gamma-1.0)
     
-    dx = width/nx
-    dy = height/ny
+    _, _, _, _, dx, dy = getExtent(width, height, nx, ny, grid)
     
     
     bc = BoundaryCondition({
@@ -280,14 +298,12 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125):
     
     
     
-def genRayleighTaylor(nx, ny, gamma, version=0):
+def genRayleighTaylor(nx, ny, gamma, version=0, grid=None):
     """
     Generates Rayleigh-Taylor instability case
     """
     width = 0.5
     height = 1.5
-    dx = width / float(nx)
-    dy = height / float(ny)
     g = 0.1
 
     rho = np.zeros((ny, nx), dtype=np.float32)
@@ -295,8 +311,10 @@ def genRayleighTaylor(nx, ny, gamma, version=0):
     v = np.zeros((ny, nx), dtype=np.float32)
     p = np.zeros((ny, nx), dtype=np.float32)
     
-    x = np.linspace(0.5*dx, nx*dx-0.5*dx, nx, dtype=np.float32)-width*0.5
-    y = np.linspace(0.5*dy, ny*dy-0.5*dy, ny, dtype=np.float32)-height*0.5
+    
+    x0, x1, y0, y1, dx, dy = getExtent(width, height, nx, ny, grid)
+    x = np.linspace(x0, x1, nx, dtype=np.float32)-width*0.5
+    y = np.linspace(y0, y1, ny, dtype=np.float32)-height*0.5
     xv, yv = np.meshgrid(x, y, sparse=False, indexing='xy')
     
     #This gives a squigly interfact
@@ -313,9 +331,6 @@ def genRayleighTaylor(nx, ny, gamma, version=0):
     
     p = 2.5 - rho*g*yv
     E = 0.5*rho*(u**2+v**2) + p/(gamma-1.0)
-    
-    dx = width/nx
-    dy = height/ny
     
     bc = BoundaryCondition({
         'north': BoundaryCondition.Type.Reflective,

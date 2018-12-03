@@ -92,12 +92,13 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
     save_times, and saves all of the variables in list save_var_names. Elements in  
     save_var_names can be set to None if you do not want to save them
     """
+    logger = logging.getLogger(__name__)
     
     assert len(save_times) > 0, "Need to specify which times to save"
     
     with Timer("construct") as t:
         sim = simulator(**simulator_args)
-    print("Constructed in " + str(t.secs) + " seconds")
+    logger.info("Constructed in " + str(t.secs) + " seconds")
 
     #Create netcdf file and simulate
     with DataDumper(outfile, mode='w', clobber=False) as outdata:
@@ -153,7 +154,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             try:
                 sim.check()
             except AssertionError as e:
-                print("Error after {:d} steps (t={:f}: {:s}".format(sim.simSteps(), sim.simTime(), str(e)))
+                logger.error("Error after {:d} steps (t={:f}: {:s}".format(sim.simSteps(), sim.simTime(), str(e)))
                 return outdata.filename
 
             #Simulate
@@ -170,9 +171,9 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             #Write progress to screen
             print_string = progress_printer.getPrintString(t_end)
             if (print_string):
-                print(print_string)
+                logger.debug(print_string)
                 
-        print("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
+        logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
 
     return outdata.filename   
 
