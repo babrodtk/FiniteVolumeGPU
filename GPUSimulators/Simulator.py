@@ -217,32 +217,38 @@ class BaseSimulator(object):
             
         self.t += dt
         self.nt += 1
-        
-    def substep(self, dt, step_number):
-        """
-        Function which performs one single substep with stepsize dt
-        """
-        raise(NotImplementedError("Needs to be implemented in subclass"))
 
-    def download(self):
-        raise(NotImplementedError("Needs to be implemented in subclass"))
+    def download(self, variables=None):
+        return self.getOutput().download(self.stream, variables)
         
     def synchronize(self):
         self.stream.synchronize()
-
-    def check(self):
-        self.logger.warning("check() is not implemented - please implement")
-        #raise(NotImplementedError("Needs to be implemented in subclass"))
         
     def simTime(self):
         return self.t
 
     def simSteps(self):
         return self.nt
+       
+    def getExtent(self):
+        return [0, 0, self.nx*self.dx, self.ny*self.dy]
+        
+    def substep(self, dt, step_number):
+        """
+        Function which performs one single substep with stepsize dt
+        """
+        raise(NotImplementedError("Needs to be implemented in subclass"))
+        
+    def getOutput(self):
+        raise(NotImplementedError("Needs to be implemented in subclass"))
+
+    def check(self):
+        self.logger.warning("check() is not implemented - please implement")
+        #raise(NotImplementedError("Needs to be implemented in subclass"))
         
     def computeDt(self):
         raise(NotImplementedError("Needs to be implemented in subclass"))
-        
+       
         
         
         

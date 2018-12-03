@@ -126,9 +126,8 @@ class KP07 (Simulator.BaseSimulator):
                 self.cfl_data.gpudata)
         self.u0, self.u1 = self.u1, self.u0
 
-
-    def download(self):
-        return self.u0.download(self.stream)
+    def getOutput(self):
+        return self.u0
         
     def check(self):
         self.u0.check()
