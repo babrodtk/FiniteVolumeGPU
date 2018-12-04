@@ -65,13 +65,12 @@ class HLL2 (Simulator.BaseSimulator):
         super().__init__(context, 
             nx, ny, 
             dx, dy, 
+            boundary_conditions,
             cfl_scale,
             2,
             block_width, block_height);
         self.g = np.float32(g) 
         self.theta = np.float32(theta)
-        self.cfl_scale = cfl_scale
-        self.boundary_conditions = boundary_conditions.asCodedInt()
         
         #Get kernels
         module = context.get_module("cuda/SWE2D_HLL2.cu", 

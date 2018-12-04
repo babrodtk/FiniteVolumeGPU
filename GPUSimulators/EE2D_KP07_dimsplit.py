@@ -70,13 +70,13 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         super().__init__(context, 
             nx, ny, 
             dx, dy, 
+            boundary_conditions,
             cfl_scale, 
             2, 
             block_width, block_height)
         self.g = np.float32(g)
         self.gamma = np.float32(gamma)
         self.theta = np.float32(theta) 
-        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         module = context.get_module("cuda/EE2D_KP07_dimsplit.cu", 

@@ -51,8 +51,6 @@ class BoundaryCondition(object):
         Periodic = 2,
         Reflective = 3
 
-
-
     def __init__(self, types={ 
                     'north': Type.Reflective, 
                     'south': Type.Reflective, 
@@ -84,14 +82,23 @@ class BoundaryCondition(object):
         bc = 0
         bc = bc | (self.north & 0x0000000F) << 24
         bc = bc | (self.south & 0x0000000F) << 16
-        bc = bc | (self.east & 0x0000000F) << 8
-        bc = bc | (self.west & 0x0000000F)
+        bc = bc | (self.east  & 0x0000000F) <<  8
+        bc = bc | (self.west  & 0x0000000F) <<  0
         
         #for t in types:
         #    print("{0:s}, {1:d}, {1:032b}, {1:08b}".format(t, types[t]))
         #print("bc: {0:032b}".format(bc))
         
         return np.int32(bc)
+        
+    def getTypes(bc):
+        types = {}
+        types['north'] = BoundaryCondition.Type((bc >> 24) & 0x0000000F)
+        types['south'] = BoundaryCondition.Type((bc >> 16) & 0x0000000F)
+        types['east']  = BoundaryCondition.Type((bc >>  8) & 0x0000000F)
+        types['west']  = BoundaryCondition.Type((bc >>  0) & 0x0000000F)
+        return types
+        
     
     
     
@@ -105,6 +112,7 @@ class BaseSimulator(object):
                  context, 
                  nx, ny, 
                  dx, dy, 
+                 boundary_conditions,
                  cfl_scale,
                  num_substeps,
                  block_width, block_height):
@@ -134,7 +142,7 @@ class BaseSimulator(object):
         self.ny = np.int32(ny)
         self.dx = np.float32(dx)
         self.dy = np.float32(dy)
-        self.dt = None
+        self.setBoundaryConditions(boundary_conditions)
         self.cfl_scale = cfl_scale
         self.num_substeps = num_substeps
         
@@ -232,6 +240,13 @@ class BaseSimulator(object):
        
     def getExtent(self):
         return [0, 0, self.nx*self.dx, self.ny*self.dy]
+        
+    def setBoundaryConditions(self, boundary_conditions):
+        self.logger.debug("Boundary conditions set to {:s}".format(str(boundary_conditions)))
+        self.boundary_conditions = boundary_conditions.asCodedInt()
+        
+    def getBoundaryConditions(self):
+        return BoundaryCondition(BoundaryCondition.getTypes(self.boundary_conditions))
         
     def substep(self, dt, step_number):
         """

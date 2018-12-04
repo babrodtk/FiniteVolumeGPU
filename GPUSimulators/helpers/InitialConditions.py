@@ -234,7 +234,7 @@ def genKelvinHelmholtz(nx, ny, gamma, roughness=0.125, grid=None):
 
 
 
-        x0, x1, y0, y1, _, _ = getExtent(1.0, 1.0, nx, ny, grid)
+        x0, x1, y0, y1, _, dy = getExtent(1.0, 1.0, nx, ny, grid)
         x = np.linspace(x0, x1, nx)
         y = np.linspace(y0, y1, ny)
         _, y = np.meshgrid(x, y)

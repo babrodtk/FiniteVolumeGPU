@@ -67,11 +67,11 @@ class FORCE (Simulator.BaseSimulator):
         super().__init__(context, 
             nx, ny, 
             dx, dy, 
+            boundary_conditions,
             cfl_scale,
             1,
             block_width, block_height)
         self.g = np.float32(g) 
-        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         module = context.get_module("cuda/SWE2D_FORCE.cu",

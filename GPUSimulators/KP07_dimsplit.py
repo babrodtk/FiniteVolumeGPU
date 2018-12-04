@@ -67,6 +67,7 @@ class KP07_dimsplit(Simulator.BaseSimulator):
         super().__init__(context, 
             nx, ny, 
             dx, dy, 
+            boundary_conditions,
             cfl_scale,
             2, 
             block_width, block_height)
@@ -74,7 +75,6 @@ class KP07_dimsplit(Simulator.BaseSimulator):
         self.gc_y = 2
         self.g = np.float32(g)
         self.theta = np.float32(theta)
-        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         module = context.get_module("cuda/SWE2D_KP07_dimsplit.cu", 

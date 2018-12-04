@@ -154,9 +154,11 @@ class MPISimulator(Simulator.BaseSimulator):
         
         autotuner = sim.context.autotuner
         sim.context.autotuner = None;
+        boundary_conditions = sim.getBoundaryConditions()
         super().__init__(sim.context, 
             sim.nx, sim.ny, 
             sim.dx, sim.dy, 
+            boundary_conditions,
             sim.cfl_scale,
             sim.num_substeps,  
             sim.block_size[0], sim.block_size[1])
@@ -171,12 +173,35 @@ class MPISimulator(Simulator.BaseSimulator):
         self.north = grid.getNorth()
         self.south = grid.getSouth()
         
+        #Get coordinate of this node
+        #and handle global boundary conditions
+        new_boundary_conditions = Simulator.BoundaryCondition({
+            'north': Simulator.BoundaryCondition.Type.Dirichlet,
+            'south': Simulator.BoundaryCondition.Type.Dirichlet,
+            'east': Simulator.BoundaryCondition.Type.Dirichlet,
+            'west': Simulator.BoundaryCondition.Type.Dirichlet
+        })
+        gi, gj = grid.getCoordinate()
+        if (gi == 0 and boundary_conditions.west != Simulator.BoundaryCondition.Type.Periodic):
+            self.west = None
+            new_boundary_conditions.west = boundary_conditions.west;
+        if (gj == 0 and boundary_conditions.south != Simulator.BoundaryCondition.Type.Periodic):
+            self.south = None
+            new_boundary_conditions.south = boundary_conditions.south;
+        if (gi == grid.grid[0]-1 and boundary_conditions.east != Simulator.BoundaryCondition.Type.Periodic):
+            self.east = None
+            new_boundary_conditions.east = boundary_conditions.east;
+        if (gj == grid.grid[1]-1 and boundary_conditions.north != Simulator.BoundaryCondition.Type.Periodic):
+            self.north = None
+            new_boundary_conditions.north = boundary_conditions.north;
+        sim.setBoundaryConditions(new_boundary_conditions)
+                
         #Get number of variables
-        self.nvars = len(self.sim.u0.gpu_variables)
+        self.nvars = len(self.getOutput().gpu_variables)
         
         #Shorthands for computing extents and sizes
-        gc_x = int(self.sim.u0[0].x_halo)
-        gc_y = int(self.sim.u0[0].y_halo)
+        gc_x = int(self.sim.getOutput()[0].x_halo)
+        gc_y = int(self.sim.getOutput()[0].y_halo)
         nx = int(self.sim.nx)
         ny = int(self.sim.ny)
         
@@ -207,6 +232,8 @@ class MPISimulator(Simulator.BaseSimulator):
         self.out_w = np.empty_like(self.in_w)
         self.out_n = np.empty_like(self.in_n)
         self.out_s = np.empty_like(self.in_s)
+        
+        self.logger.debug("Simlator rank {:d} has neighbors {:s}".format(self.grid.comm.rank, str([self.north, self.south, self.east, self.west])))
         
         self.logger.debug("Simlator rank {:d} initialized ".format(self.grid.comm.rank))
     
@@ -258,29 +285,35 @@ class MPISimulator(Simulator.BaseSimulator):
         ####
         
         #Download from the GPU
-        for k in range(self.nvars):
-            self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], async=True, extent=self.read_n)
-            self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], async=True, extent=self.read_s)
+        if self.north is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], async=True, extent=self.read_n)
+        if self.south is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], async=True, extent=self.read_s)
         self.sim.stream.synchronize()
         
-        #Send to north/south neighbours
+        #Send/receive to north/south neighbours
         comm_send = []
-        comm_send += [self.grid.comm.Isend(self.out_n, dest=self.north, tag=4*self.nt + 0)]
-        comm_send += [self.grid.comm.Isend(self.out_s, dest=self.south, tag=4*self.nt + 1)]
-        
-        #Receive from north/south neighbors
         comm_recv = []
-        comm_recv += [self.grid.comm.Irecv(self.in_s, source=self.south, tag=4*self.nt + 0)]
-        comm_recv += [self.grid.comm.Irecv(self.in_n, source=self.north, tag=4*self.nt + 1)]
+        if self.north is not None:
+            comm_send += [self.grid.comm.Isend(self.out_n, dest=self.north, tag=4*self.nt + 0)]
+            comm_recv += [self.grid.comm.Irecv(self.in_n, source=self.north, tag=4*self.nt + 1)]
+        if self.south is not None:
+            comm_send += [self.grid.comm.Isend(self.out_s, dest=self.south, tag=4*self.nt + 1)]
+            comm_recv += [self.grid.comm.Irecv(self.in_s, source=self.south, tag=4*self.nt + 0)]
         
         #Wait for incoming transfers to complete
         for comm in comm_recv:
             comm.wait()
         
         #Upload to the GPU
-        for k in range(self.nvars):
-            self.sim.u0[k].upload(self.sim.stream, self.in_n[k,:,:], extent=self.write_n)
-            self.sim.u0[k].upload(self.sim.stream, self.in_s[k,:,:], extent=self.write_s)
+        if self.north is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].upload(self.sim.stream, self.in_n[k,:,:], extent=self.write_n)
+        if self.south is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].upload(self.sim.stream, self.in_s[k,:,:], extent=self.write_s)
         
         #Wait for sending to complete
         for comm in comm_send:
@@ -293,29 +326,36 @@ class MPISimulator(Simulator.BaseSimulator):
         ####
         
         #Download from the GPU
-        for k in range(self.nvars):
-            self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], async=True, extent=self.read_e)
-            self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], async=True, extent=self.read_w)
+        if self.east is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], async=True, extent=self.read_e)
+        if self.west is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], async=True, extent=self.read_w)
         self.sim.stream.synchronize()
         
-        #Send to east/west neighbours
+        #Send/receive to east/west neighbours
         comm_send = []
-        comm_send += [self.grid.comm.Isend(self.out_e, dest=self.east, tag=4*self.nt + 2)]
-        comm_send += [self.grid.comm.Isend(self.out_w, dest=self.west, tag=4*self.nt + 3)]
-        
-        #Receive from east/west neighbors
         comm_recv = []
-        comm_recv += [self.grid.comm.Irecv(self.in_w, source=self.west, tag=4*self.nt + 2)]
-        comm_recv += [self.grid.comm.Irecv(self.in_e, source=self.east, tag=4*self.nt + 3)]
+        if self.east is not None:
+            comm_send += [self.grid.comm.Isend(self.out_e, dest=self.east, tag=4*self.nt + 2)]
+            comm_recv += [self.grid.comm.Irecv(self.in_e, source=self.east, tag=4*self.nt + 3)]
+        if self.west is not None:
+            comm_send += [self.grid.comm.Isend(self.out_w, dest=self.west, tag=4*self.nt + 3)]
+            comm_recv += [self.grid.comm.Irecv(self.in_w, source=self.west, tag=4*self.nt + 2)]
+        
         
         #Wait for incoming transfers to complete
         for comm in comm_recv:
             comm.wait()
         
         #Upload to the GPU
-        for k in range(self.nvars):
-            self.sim.u0[k].upload(self.sim.stream, self.in_e[k,:,:], extent=self.write_e)
-            self.sim.u0[k].upload(self.sim.stream, self.in_w[k,:,:], extent=self.write_w)
+        if self.east is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].upload(self.sim.stream, self.in_e[k,:,:], extent=self.write_e)
+        if self.west is not None:
+            for k in range(self.nvars):
+                self.sim.u0[k].upload(self.sim.stream, self.in_w[k,:,:], extent=self.write_w)
         
         #Wait for sending to complete
         for comm in comm_send:

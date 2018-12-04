@@ -114,19 +114,19 @@ enum BoundaryCondition {
 };
 
 inline __device__ BoundaryCondition getBCNorth(int bc_) {
-    return static_cast<BoundaryCondition>(bc_ & 0x0000000F);
+    return static_cast<BoundaryCondition>((bc_ >> 24) & 0x0000000F);
 }
 
 inline __device__ BoundaryCondition getBCSouth(int bc_) {
-    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x0000000F);
-}
-
-inline __device__ BoundaryCondition getBCEast(int bc_) {
     return static_cast<BoundaryCondition>((bc_ >> 16) & 0x0000000F);
 }
 
+inline __device__ BoundaryCondition getBCEast(int bc_) {
+    return static_cast<BoundaryCondition>((bc_ >> 8) & 0x0000000F);
+}
+
 inline __device__ BoundaryCondition getBCWest(int bc_) {
-    return static_cast<BoundaryCondition>(bc_ >> 24);
+    return static_cast<BoundaryCondition>((bc_ >> 0) & 0x0000000F);
 }
 
 
@@ -404,9 +404,9 @@ __device__ void bcSouthReflective(float Q[h+2*gc_y][w+2*gc_x],
         }
     }
 }
-        
-        
-        
+
+
+
     
 // North boundary
 template<int w, int h, int gc_x, int gc_y, int sign>

@@ -67,13 +67,13 @@ class KP07 (Simulator.BaseSimulator):
         super().__init__(context, 
             nx, ny, 
             dx, dy, 
+            boundary_conditions,
             cfl_scale,
             order,
             block_width, block_height);
         self.g = np.float32(g)             
         self.theta = np.float32(theta) 
         self.order = np.int32(order)
-        self.boundary_conditions = boundary_conditions.asCodedInt()
 
         #Get kernels
         module = context.get_module("cuda/SWE2D_KP07.cu", 
