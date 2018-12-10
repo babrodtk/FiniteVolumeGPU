@@ -132,7 +132,8 @@ class MPIGrid(object):
             grid = grid + [1]*(num_dims - len(grid))
         
         #Sort in descending order
-        grid = np.flip(np.sort(grid))
+        grid = np.sort(grid)
+        grid = grid[::-1]
         
         return grid
 
