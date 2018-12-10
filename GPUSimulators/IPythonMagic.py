@@ -47,6 +47,10 @@ class MagicCudaContext(Magics):
         
         self.logger.info("Registering %s in user workspace", args.name)
         
+        context_flags = None
+        if (args.blocking):
+            context_flags = cuda.ctx_flags.SCHED_BLOCKING_SYNC
+        
         if args.name in self.shell.user_ns.keys():
             self.logger.debug("Context already registered! Ignoring")
             return
@@ -54,7 +58,7 @@ class MagicCudaContext(Magics):
             self.logger.debug("Creating context")
             use_cache = False if args.no_cache else True
             use_autotuning = False if args.no_autotuning else True
-            self.shell.user_ns[args.name] = CudaContext.CudaContext(blocking=args.blocking, use_cache=use_cache, autotuning=use_autotuning)
+            self.shell.user_ns[args.name] = CudaContext.CudaContext(context_flags=context_flags, use_cache=use_cache, autotuning=use_autotuning)
         
         # this function will be called on exceptions in any cell
         def custom_exc(shell, etype, evalue, tb, tb_offset=None):

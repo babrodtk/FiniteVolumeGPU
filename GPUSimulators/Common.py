@@ -38,6 +38,7 @@ import json
 import pycuda.compiler as cuda_compiler
 import pycuda.gpuarray
 import pycuda.driver as cuda
+from pycuda.tools import PageLockedMemoryPool
 
 
 
@@ -482,6 +483,9 @@ class CudaArray2D:
         #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
         self.data = pycuda.gpuarray.zeros((ny_halo, nx_halo), dtype)
         
+        #For returning to download
+        self.memorypool = PageLockedMemoryPool()
+        
         #If we don't have any data, just allocate and return
         if cpu_data is None:
             return
@@ -518,8 +522,10 @@ class CudaArray2D:
         if (cpu_data is None):
             #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
             #Allocate host memory
-            #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
-            cpu_data = np.empty((ny, nx), dtype=np.float32)
+            #The following fails, don't know why (crashes python)
+            #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)32)
+            #Non-pagelocked: cpu_data = np.empty((ny, nx), dtype=np.float32)
+            cpu_data = self.memorypool.allocate((ny, nx), dtype=np.float32)
             
         assert nx == cpu_data.shape[1]
         assert ny == cpu_data.shape[0]
@@ -610,6 +616,9 @@ class CudaArray3D:
         #Should perhaps use pycuda.driver.mem_alloc_data.pitch() here
         self.data = pycuda.gpuarray.zeros((nz_halo, ny_halo, nx_halo), dtype)
         
+        #For returning to download
+        self.memorypool = PageLockedMemoryPool()
+        
         #If we don't have any data, just allocate and return
         if cpu_data is None:
             return
@@ -662,7 +671,8 @@ class CudaArray3D:
         #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
         #Allocate host memory
         #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
-        cpu_data = np.empty((self.nz, self.ny, self.nx), dtype=np.float32)
+        #cpu_data = np.empty((self.nz, self.ny, self.nx), dtype=np.float32)
+        cpu_data = self.memorypool.allocate((self.nz, self.ny, self.nx), dtype=np.float32)
         
         #Create copy object from device to host
         copy = cuda.Memcpy2D()
