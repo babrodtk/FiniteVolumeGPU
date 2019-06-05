@@ -105,8 +105,8 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
         dt_x = np.min(self.dx / (np.abs(rho_u/rho) + np.sqrt(gamma*rho)))
         dt_y = np.min(self.dy / (np.abs(rho_v/rho) + np.sqrt(gamma*rho)))
-        dt = min(dt_x, dt_y)
-        self.cfl_data.fill(dt, stream=self.stream)
+        self.dt = min(dt_x, dt_y)
+        self.cfl_data.fill(self.dt, stream=self.stream)
                         
     
     def substep(self, dt, step_number):

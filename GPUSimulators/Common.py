@@ -510,7 +510,7 @@ class CudaArray2D:
     """
     Enables downloading data from GPU to Python
     """
-    def download(self, stream, cpu_data=None, async=False, extent=None):
+    def download(self, stream, cpu_data=None, asynch=False, extent=None):
         if (extent is None):
             x = self.x_halo
             y = self.y_halo
@@ -548,7 +548,7 @@ class CudaArray2D:
         copy.height = int(ny)
         
         copy(stream)
-        if async==False:
+        if asynch==False:
             stream.synchronize()
         
         return cpu_data
@@ -667,7 +667,7 @@ class CudaArray3D:
     """
     Enables downloading data from GPU to Python
     """
-    def download(self, stream, async=False):
+    def download(self, stream, asynch=False):
         #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
         #Allocate host memory
         #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
@@ -692,7 +692,7 @@ class CudaArray3D:
         copy.depth = self.nz
         
         copy(stream)
-        if async==False:
+        if asynch==False:
             stream.synchronize()
         
         return cpu_data
@@ -734,7 +734,7 @@ class ArakawaA2D:
         cpu_variables = []
         for i in variables:
             assert i < len(self.gpu_variables), "Variable {:d} is out of range".format(i)
-            cpu_variables += [self.gpu_variables[i].download(stream, async=True)]
+            cpu_variables += [self.gpu_variables[i].download(stream, asynch=True)]
 
         stream.synchronize()
         return cpu_variables
