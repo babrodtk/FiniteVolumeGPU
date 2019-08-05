@@ -335,10 +335,10 @@ class MPISimulator(Simulator.BaseSimulator):
         #Download from the GPU
         if self.north is not None:
             for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], async=True, extent=self.read_n)
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], asynch=True, extent=self.read_n)
         if self.south is not None:
             for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], async=True, extent=self.read_s)
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], asynch=True, extent=self.read_s)
         self.sim.stream.synchronize()
         
         #Send/receive to north/south neighbours
@@ -376,10 +376,10 @@ class MPISimulator(Simulator.BaseSimulator):
         #Download from the GPU
         if self.east is not None:
             for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], async=True, extent=self.read_e)
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], asynch=True, extent=self.read_e)
         if self.west is not None:
             for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], async=True, extent=self.read_w)
+                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], asynch=True, extent=self.read_w)
         self.sim.stream.synchronize()
         
         #Send/receive to east/west neighbours
