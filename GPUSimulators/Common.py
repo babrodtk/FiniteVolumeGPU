@@ -232,10 +232,7 @@ class PopenFileBuffer(object):
         self.stderr.seek(0, 2)
 
         return cout, cerr
-            
-            
-            
-            
+
 class IPEngine(object):
     """
     Class for starting IPEngines for MPI processing in IPython
@@ -247,11 +244,13 @@ class IPEngine(object):
         self.logger.info("Starting IPController")
         self.c_buff = PopenFileBuffer()
         c_cmd = ["ipcontroller",  "--ip='*'"]
-        self.c = subprocess.Popen(c_cmd, 
-                stderr=self.c_buff.stderr, 
-                stdout=self.c_buff.stdout, 
-                shell=False,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        c_params = dict()
+        c_params['stderr'] = self.c_buff.stderr
+        c_params['stdout'] = self.c_buff.stdout
+        c_params['shell'] = False
+        if os.name == 'nt':
+            c_params['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        self.c = subprocess.Popen(c_cmd, **c_params)
         
         #Wait until controller is running
         time.sleep(3)
@@ -260,11 +259,13 @@ class IPEngine(object):
         self.logger.info("Starting IPEngines")
         self.e_buff = PopenFileBuffer()
         e_cmd = ["mpiexec", "-n", str(n_engines), "ipengine", "--mpi"]
-        self.e = subprocess.Popen(e_cmd, 
-                stderr=self.e_buff.stderr, 
-                stdout=self.e_buff.stdout, 
-                shell=False,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        e_params = dict()
+        e_params['stderr'] = self.e_buff.stderr
+        e_params['stdout'] = self.e_buff.stdout
+        e_params['shell'] = False
+        if os.name == 'nt':
+            e_params['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        self.e = subprocess.Popen(e_cmd, **e_params)
 
         # attach to a running cluster
         import ipyparallel
