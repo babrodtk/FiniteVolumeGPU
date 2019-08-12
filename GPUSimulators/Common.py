@@ -50,12 +50,19 @@ def safeCall(cmd):
     try:
         #git rev-parse HEAD
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        stdout = subprocess.check_output(cmd,
-                        stderr=subprocess.STDOUT, 
-                        cwd=current_dir,
-                        universal_newlines=True, #text=True in more recent python
-                        shell=False,
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        if os.name == 'nt':
+            stdout = subprocess.check_output(cmd,
+                            stderr=subprocess.STDOUT, 
+                            cwd=current_dir,
+                            universal_newlines=True, #text=True in more recent python
+                            shell=False,
+                            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        else:
+            stdout = subprocess.check_output(cmd,
+                            stderr=subprocess.STDOUT, 
+                            cwd=current_dir,
+                            universal_newlines=True, #text=True in more recent python
+                            shell=False)
     except subprocess.CalledProcessError as e:
         output = e.output
         logger.error("Git failed, \nReturn code: " + str(e.returncode) + "\nOutput: " + output)
