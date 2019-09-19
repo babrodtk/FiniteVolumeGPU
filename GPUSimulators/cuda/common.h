@@ -130,6 +130,113 @@ inline __device__ BoundaryCondition getBCWest(int bc_) {
 }
 
 
+// West boundary
+template<int w, int h, int gc_x, int gc_y, int sign>
+__device__ void bcWestReflective(float Q[h+2*gc_y][w+2*gc_x], 
+                                const int nx_, const int ny_) {
+    for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
+        const int i = threadIdx.x + gc_x;
+        const int ti = blockDim.x*blockIdx.x + i;
+        
+        if (gc_x >= 1 && ti == gc_x) {
+            Q[j][i-1] = sign*Q[j][i];
+        }
+        if (gc_x >= 2 && ti == gc_x + 1) {
+            Q[j][i-3] = sign*Q[j][i];
+        }
+        if (gc_x >= 3 && ti == gc_x + 2) {
+            Q[j][i-5] = sign*Q[j][i];
+        }
+        if (gc_x >= 4 && ti == gc_x + 3) {
+            Q[j][i-7] = sign*Q[j][i];
+        }
+        if (gc_x >= 5 && ti == gc_x + 4) {
+            Q[j][i-9] = sign*Q[j][i];
+        }
+    }
+}
+
+
+// East boundary
+template<int w, int h, int gc_x, int gc_y, int sign>
+__device__ void bcEastReflective(float Q[h+2*gc_y][w+2*gc_x], 
+                                const int nx_, const int ny_) {
+    for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
+        const int i = threadIdx.x + gc_x;
+        const int ti = blockDim.x*blockIdx.x + i;
+        
+        if (gc_x >= 1 && ti == nx_ + gc_x - 1) {
+            Q[j][i+1] = sign*Q[j][i];
+        }
+        if (gc_x >= 2 && ti == nx_ + gc_x - 2) {
+            Q[j][i+3] = sign*Q[j][i];
+        }
+        if (gc_x >= 3 && ti == nx_ + gc_x - 3) {
+            Q[j][i+5] = sign*Q[j][i];
+        }
+        if (gc_x >= 4 && ti == nx_ + gc_x - 4) {
+            Q[j][i+7] = sign*Q[j][i];
+        }
+        if (gc_x >= 5 && ti == nx_ + gc_x - 5) {
+            Q[j][i+9] = sign*Q[j][i];
+        }
+    }
+}
+    
+    
+// South boundary
+template<int w, int h, int gc_x, int gc_y, int sign>
+__device__ void bcSouthReflective(float Q[h+2*gc_y][w+2*gc_x], 
+                                const int nx_, const int ny_) {
+    for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
+        const int j = threadIdx.y + gc_y;
+        const int tj = blockDim.y*blockIdx.y + j;
+
+        if (gc_y >= 1 && tj == gc_y) {
+            Q[j-1][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 2 && tj == gc_y + 1) {
+            Q[j-3][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 3 && tj == gc_y + 2) {
+            Q[j-5][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 4 && tj == gc_y + 3) {
+            Q[j-7][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 5 && tj == gc_y + 4) {
+            Q[j-9][i] = sign*Q[j][i];
+        }
+    }
+}
+
+
+
+    
+// North boundary
+template<int w, int h, int gc_x, int gc_y, int sign>
+__device__ void bcNorthReflective(float Q[h+2*gc_y][w+2*gc_x], const int nx_, const int ny_) {
+    for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
+        const int j = threadIdx.y + gc_y;
+        const int tj = blockDim.y*blockIdx.y + j;
+        
+        if (gc_y >= 1 && tj == ny_ + gc_y - 1) {
+            Q[j+1][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 2 && tj == ny_ + gc_y - 2) {
+            Q[j+3][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 3 && tj == ny_ + gc_y - 3) {
+            Q[j+5][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 4 && tj == ny_ + gc_y - 4) {
+            Q[j+7][i] = sign*Q[j][i];
+        }
+        if (gc_y >= 5 && tj == ny_ + gc_y - 5) {
+            Q[j+9][i] = sign*Q[j][i];
+        }
+    }
+}
 
 
 
@@ -311,138 +418,6 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
         }
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// West boundary
-template<int w, int h, int gc_x, int gc_y, int sign>
-__device__ void bcWestReflective(float Q[h+2*gc_y][w+2*gc_x], 
-                                const int nx_, const int ny_) {
-    for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
-        const int i = threadIdx.x + gc_x;
-        const int ti = blockDim.x*blockIdx.x + i;
-        
-        if (gc_x >= 1 && ti == gc_x) {
-            Q[j][i-1] = sign*Q[j][i];
-        }
-        if (gc_x >= 2 && ti == gc_x + 1) {
-            Q[j][i-3] = sign*Q[j][i];
-        }
-        if (gc_x >= 3 && ti == gc_x + 2) {
-            Q[j][i-5] = sign*Q[j][i];
-        }
-        if (gc_x >= 4 && ti == gc_x + 3) {
-            Q[j][i-7] = sign*Q[j][i];
-        }
-        if (gc_x >= 5 && ti == gc_x + 4) {
-            Q[j][i-9] = sign*Q[j][i];
-        }
-    }
-}
-
-
-// East boundary
-template<int w, int h, int gc_x, int gc_y, int sign>
-__device__ void bcEastReflective(float Q[h+2*gc_y][w+2*gc_x], 
-                                const int nx_, const int ny_) {
-    for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
-        const int i = threadIdx.x + gc_x;
-        const int ti = blockDim.x*blockIdx.x + i;
-        
-        if (gc_x >= 1 && ti == nx_ + gc_x - 1) {
-            Q[j][i+1] = sign*Q[j][i];
-        }
-        if (gc_x >= 2 && ti == nx_ + gc_x - 2) {
-            Q[j][i+3] = sign*Q[j][i];
-        }
-        if (gc_x >= 3 && ti == nx_ + gc_x - 3) {
-            Q[j][i+5] = sign*Q[j][i];
-        }
-        if (gc_x >= 4 && ti == nx_ + gc_x - 4) {
-            Q[j][i+7] = sign*Q[j][i];
-        }
-        if (gc_x >= 5 && ti == nx_ + gc_x - 5) {
-            Q[j][i+9] = sign*Q[j][i];
-        }
-    }
-}
-    
-    
-// South boundary
-template<int w, int h, int gc_x, int gc_y, int sign>
-__device__ void bcSouthReflective(float Q[h+2*gc_y][w+2*gc_x], 
-                                const int nx_, const int ny_) {
-    for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
-        const int j = threadIdx.y + gc_y;
-        const int tj = blockDim.y*blockIdx.y + j;
-
-        if (gc_y >= 1 && tj == gc_y) {
-            Q[j-1][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 2 && tj == gc_y + 1) {
-            Q[j-3][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 3 && tj == gc_y + 2) {
-            Q[j-5][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 4 && tj == gc_y + 3) {
-            Q[j-7][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 5 && tj == gc_y + 4) {
-            Q[j-9][i] = sign*Q[j][i];
-        }
-    }
-}
-
-
-
-    
-// North boundary
-template<int w, int h, int gc_x, int gc_y, int sign>
-__device__ void bcNorthReflective(float Q[h+2*gc_y][w+2*gc_x], const int nx_, const int ny_) {
-    for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
-        const int j = threadIdx.y + gc_y;
-        const int tj = blockDim.y*blockIdx.y + j;
-        
-        if (gc_y >= 1 && tj == ny_ + gc_y - 1) {
-            Q[j+1][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 2 && tj == ny_ + gc_y - 2) {
-            Q[j+3][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 3 && tj == ny_ + gc_y - 3) {
-            Q[j+5][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 4 && tj == ny_ + gc_y - 4) {
-            Q[j+7][i] = sign*Q[j][i];
-        }
-        if (gc_y >= 5 && tj == ny_ + gc_y - 5) {
-            Q[j+9][i] = sign*Q[j][i];
-        }
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
 
 
 

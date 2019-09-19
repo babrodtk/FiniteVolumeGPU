@@ -50,12 +50,14 @@ def safeCall(cmd):
     try:
         #git rev-parse HEAD
         current_dir = os.path.dirname(os.path.realpath(__file__))
-        stdout = subprocess.check_output(cmd,
-                        stderr=subprocess.STDOUT, 
-                        cwd=current_dir,
-                        universal_newlines=True, #text=True in more recent python
-                        shell=False,
-                        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        params = dict()
+        params['stderr'] = subprocess.STDOUT
+        params['cwd'] = current_dir
+        params['universal_newlines'] = True #text=True in more recent python
+        params['shell'] = False
+        if os.name == 'nt':
+            params['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        stdout = subprocess.check_output(cmd, **params)
     except subprocess.CalledProcessError as e:
         output = e.output
         logger.error("Git failed, \nReturn code: " + str(e.returncode) + "\nOutput: " + output)
@@ -232,10 +234,7 @@ class PopenFileBuffer(object):
         self.stderr.seek(0, 2)
 
         return cout, cerr
-            
-            
-            
-            
+
 class IPEngine(object):
     """
     Class for starting IPEngines for MPI processing in IPython
@@ -247,11 +246,13 @@ class IPEngine(object):
         self.logger.info("Starting IPController")
         self.c_buff = PopenFileBuffer()
         c_cmd = ["ipcontroller",  "--ip='*'"]
-        self.c = subprocess.Popen(c_cmd, 
-                stderr=self.c_buff.stderr, 
-                stdout=self.c_buff.stdout, 
-                shell=False,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        c_params = dict()
+        c_params['stderr'] = self.c_buff.stderr
+        c_params['stdout'] = self.c_buff.stdout
+        c_params['shell'] = False
+        if os.name == 'nt':
+            c_params['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        self.c = subprocess.Popen(c_cmd, **c_params)
         
         #Wait until controller is running
         time.sleep(3)
@@ -260,11 +261,13 @@ class IPEngine(object):
         self.logger.info("Starting IPEngines")
         self.e_buff = PopenFileBuffer()
         e_cmd = ["mpiexec", "-n", str(n_engines), "ipengine", "--mpi"]
-        self.e = subprocess.Popen(e_cmd, 
-                stderr=self.e_buff.stderr, 
-                stdout=self.e_buff.stdout, 
-                shell=False,
-                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        e_params = dict()
+        e_params['stderr'] = self.e_buff.stderr
+        e_params['stdout'] = self.e_buff.stdout
+        e_params['shell'] = False
+        if os.name == 'nt':
+            e_params['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+        self.e = subprocess.Popen(e_cmd, **e_params)
 
         # attach to a running cluster
         import ipyparallel
@@ -510,7 +513,7 @@ class CudaArray2D:
     """
     Enables downloading data from GPU to Python
     """
-    def download(self, stream, cpu_data=None, async=False, extent=None):
+    def download(self, stream, cpu_data=None, asynch=False, extent=None):
         if (extent is None):
             x = self.x_halo
             y = self.y_halo
@@ -548,7 +551,7 @@ class CudaArray2D:
         copy.height = int(ny)
         
         copy(stream)
-        if async==False:
+        if asynch==False:
             stream.synchronize()
         
         return cpu_data
@@ -667,7 +670,7 @@ class CudaArray3D:
     """
     Enables downloading data from GPU to Python
     """
-    def download(self, stream, async=False):
+    def download(self, stream, asynch=False):
         #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
         #Allocate host memory
         #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)
@@ -692,7 +695,7 @@ class CudaArray3D:
         copy.depth = self.nz
         
         copy(stream)
-        if async==False:
+        if asynch==False:
             stream.synchronize()
         
         return cpu_data
@@ -734,7 +737,7 @@ class ArakawaA2D:
         cpu_variables = []
         for i in variables:
             assert i < len(self.gpu_variables), "Variable {:d} is out of range".format(i)
-            cpu_variables += [self.gpu_variables[i].download(stream, async=True)]
+            cpu_variables += [self.gpu_variables[i].download(stream, asynch=True)]
 
         stream.synchronize()
         return cpu_variables
