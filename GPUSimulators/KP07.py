@@ -25,9 +25,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 #Import packages we need
+from GPUSimulators import Simulator, Common
+from GPUSimulators.Simulator import BaseSimulator, BoundaryCondition
 import numpy as np
-from GPUSimulators import Simulator
 
+from pycuda import gpuarray
 
 
 
@@ -49,64 +51,88 @@ class KP07 (Simulator.BaseSimulator):
     dt: Size of each timestep (90 s)
     g: Gravitational accelleration (9.81 m/s^2)
     """
-    def __init__(self, \
-                 context, \
-                 h0, hu0, hv0, \
-                 nx, ny, \
-                 dx, dy, dt, \
-                 g, \
-                 theta=1.3, \
+    def __init__(self, 
+                 context, 
+                 h0, hu0, hv0, 
+                 nx, ny, 
+                 dx, dy, 
+                 g, 
+                 theta=1.3, 
+                 cfl_scale=0.9,
+                 order=2,
+                 boundary_conditions=BoundaryCondition(), 
                  block_width=16, block_height=16):
                  
         # Call super constructor
-        super().__init__(context, \
-            h0, hu0, hv0, \
-            nx, ny, \
-            2, 2, \
-            dx, dy, dt, \
-            g, \
+        super().__init__(context, 
+            nx, ny, 
+            dx, dy, 
+            boundary_conditions,
+            cfl_scale,
+            order,
             block_width, block_height);
-            
-        self.theta = np.float32(theta)
+        self.g = np.float32(g)             
+        self.theta = np.float32(theta) 
+        self.order = np.int32(order)
 
         #Get kernels
-        self.kernel = context.get_prepared_kernel("KP07_kernel.cu", "KP07Kernel", \
-                                        "iifffffiPiPiPiPiPiPi", \
-                                        BLOCK_WIDTH=self.local_size[0], \
-                                        BLOCK_HEIGHT=self.local_size[1])
+        module = context.get_module("cuda/SWE2D_KP07.cu", 
+                                        defines={
+                                            'BLOCK_WIDTH': self.block_size[0], 
+                                            'BLOCK_HEIGHT': self.block_size[1]
+                                        }, 
+                                        compile_args={
+                                            'no_extern_c': True,
+                                            'options': ["--use_fast_math"], 
+                                        }, 
+                                        jit_compile_args={})
+        self.kernel = module.get_function("KP07Kernel")
+        self.kernel.prepare("iifffffiiPiPiPiPiPiPiP")
         
-    def __str__(self):
-        return "Kurganov-Petrova 2007"
-    
-    def simulate(self, t_end):
-        return super().simulateRK(t_end, 2)
+        #Create data by uploading to device
+        self.u0 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        2, 2, 
+                        [h0, hu0, hv0])
+        self.u1 = Common.ArakawaA2D(self.stream, 
+                        nx, ny, 
+                        2, 2, 
+                        [None, None, None])
+        self.cfl_data = gpuarray.GPUArray(self.grid_size, dtype=np.float32)
+        dt_x = np.min(self.dx / (np.abs(hu0/h0) + np.sqrt(g*h0)))
+        dt_y = np.min(self.dy / (np.abs(hv0/h0) + np.sqrt(g*h0)))
+        dt = min(dt_x, dt_y)
+        self.cfl_data.fill(dt, stream=self.stream)
+                        
+        
+    def substep(self, dt, step_number):
+            self.substepRK(dt, step_number)
+
         
     def substepRK(self, dt, substep):
-        self.kernel.prepared_async_call(self.global_size, self.local_size, self.stream, \
-                self.nx, self.ny, \
-                self.dx, self.dy, dt, \
-                self.g, \
-                self.theta, \
-                np.int32(substep), \
-                self.data.h0.data.gpudata,  self.data.h0.data.strides[0],  \
-                self.data.hu0.data.gpudata, self.data.hu0.data.strides[0], \
-                self.data.hv0.data.gpudata, self.data.hv0.data.strides[0], \
-                self.data.h1.data.gpudata,  self.data.h1.data.strides[0],  \
-                self.data.hu1.data.gpudata, self.data.hu1.data.strides[0], \
-                self.data.hv1.data.gpudata, self.data.hv1.data.strides[0])
-        self.data.swap()
-        
-    def stepEuler(self, dt):
-        self.substepRK(dt, 0)
-        self.t += dt
-        
-    def stepRK(self, dt, order):
-        if (order != 2):
-            raise NotImplementedError("Only second order implemented")
-        self.substepRK(dt, 0)
-        self.substepRK(dt, 1)
-        self.t += dt
-    
-    def download(self):
-        return self.data.download(self.stream)
+        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
+                self.nx, self.ny, 
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.theta, 
+                Simulator.stepOrderToCodedInt(step=substep, order=self.order), 
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0],
+                self.cfl_data.gpudata)
+        self.u0, self.u1 = self.u1, self.u0
 
+    def getOutput(self):
+        return self.u0
+        
+    def check(self):
+        self.u0.check()
+        self.u1.check()
+        
+    def computeDt(self):
+        max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();
+        return max_dt*0.5**(self.order-1)
