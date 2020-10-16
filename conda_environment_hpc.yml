@@ -1,0 +1,22 @@
+# Assumes that conda, pip, build-essentials and cuda are installed
+---
+name: ShallowWaterGPU_HPC
+channels:
+- conda-forge
+
+dependencies:
+- python=3.7
+- numpy
+- mpi4py
+- six
+- pytools
+- netcdf4
+- scipy
+
+# Install conda environment (one-time operation):
+# $ conda env create -f conda_environment_hpc.yml
+# Activate environment and install the following packages using pip:
+# $ conda activate ShallowWaterGPU
+#  - pycuda: $ pip3 install --no-deps -U pycuda
+# on Windows: make sure your visual studio c++ compiler is available in PATH
+# PATH should have something like C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\
