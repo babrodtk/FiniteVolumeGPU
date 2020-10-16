@@ -12,11 +12,23 @@
 ulimit -s 10240
 module load slurm 
 module load openmpi/4.0.1
+module load cuda10.1/toolkit/10.1.243
 
 # Check how many gpu's your job got
 #nvidia-smi
 
+## Copy input files to the work directory:
+mkdir -p /work/$USER/ShallowWaterGPU
+cp -r . /work/$USER/ShallowWaterGPU
+
 # Run job
-cd /home/martinls/src/ShallowWaterGPU
-mpirun --mca btl_openib_if_include mlx5_0 --mca btl_openib_warn_no_device_params_found 0 /home/martinls/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py
+# (Assumes Miniconda is installed in user root dir.)
+cd /work/$USER/ShallowWaterGPU
+mpirun --mca btl_openib_if_include mlx5_0 --mca btl_openib_warn_no_device_params_found 0 $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py
+cd $HOME/src/ShallowWaterGPU
+
+## Copy files from work directory:
+# (NOTE: Copying is not performed if job fails!)
+cp /work/$USER/ShallowWaterGPU/*.log .
+cp /work/$USER/ShallowWaterGPU/*.nc .
 
