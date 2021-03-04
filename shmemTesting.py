@@ -94,7 +94,7 @@ for i in range(grid.ngpus):
     def genSim(**kwargs):
         sim = EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**kwargs)
         #sim = SHMEMSimulator.SHMEMSimulator(local_sim, grid) # implement SHMEMSimulator-support
-        sims.append(local_sim)
+        sims.append(sim)
         return sim
     outfile = Common.runSimulation(genSim, arguments, outfile, save_times, save_var_names)
 
