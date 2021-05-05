@@ -60,8 +60,10 @@ logger.info("File logger using level %s to %s", logging.getLevelName(log_level_f
 ####
 # Initialize SHMEM grid etc
 ####
+nsubdomains = 2
+
 logger.info("Creating SHMEM grid")
-grid = SHMEMSimulator.SHMEMGrid()
+grid = SHMEMSimulator.SHMEMGrid(ngpus=nsubdomains)
 
 
 
@@ -73,39 +75,39 @@ nx = 128
 ny = 128
 gamma = 1.4
 save_times = np.linspace(0, 5.0, 10)
-#outfile = "shmem_out.nc" # XXX: implement grid-support
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
-sims = []
-for i in range(grid.ngpus):
-    outfile = "shmem_out_" + str(i) + ".nc"
+outfile = outfile[i] = "shmem_out.nc"
 
-    arguments = IC.genKelvinHelmholtz(nx, ny, gamma) # XXX: implement grid-support
-    arguments['context'] = grid.cuda_contexts[i]
-    arguments['theta'] = 1.2
-    #arguments['grid'] = grid  # XXX: implement grid-support 
-        
-    ####
-    # Run simulation
-    ####
-    logger.info("Running simulation")
-    #Helper function to create SHMEM simulator
-    #def genSim(grid, **kwargs):
-    def genSim(**kwargs):
-        sim = EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**kwargs)
-        #sim = SHMEMSimulator.SHMEMSimulator(local_sim, grid) # implement SHMEMSimulator-support
-        sims.append(sim)
-        return sim
-    outfile = Common.runSimulation(genSim, arguments, outfile, save_times, save_var_names)
+#outfile[i] = "shmem_out_" + str(i) + ".nc"
+#arguments = []
+local_sim = []
+#sim = []
+
+arguments = IC.genKelvinHelmholtz(nx, ny, gamma, grid=grid)
+arguments['context'] = grid.cuda_contexts[i]
+arguments['theta'] = 1.2
+arguments['grid'] = grid
+
+####
+# Run simulation
+####
+logger.info("Running simulation")
+#Helper function to create SHMEM simulator
+def genSim(grid, **kwargs):
+    sim = SHMEMSimulatorGroup.SHMEMSimulatorGroup(i, local_sims, grid, **kwargs)
+    return sim
+
+outfile = Common.runSimulation(genSim, arguments, outfile, save_times, save_var_names)
 
 
 
 ####
 # Clean shutdown
 ####
-#sim = None # implement SHMEMSimulator-support
-sims = None
-local_sims = None
+sim = None
+local_sim = None
+cuda_context = None
 arguments = None
 logging.shutdown()
 gc.collect()

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This python module implements SHMEM simulator class
+This python module implements SHMEM simulator group class
 
 Copyright (C) 2020 Norwegian Meteorological Institute
 
@@ -21,40 +21,168 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 import logging
-from GPUSimulators import Simulator
+from GPUSimulators import Simulator, CudaContext
 import numpy as np
 
+import pycuda.driver as cuda
 
-class SHMEMSimulator(Simulator.BaseSimulator):
-    """
-    Class which handles communication between simulators on different GPUs
 
-    NOTE: This class is only intended to be used by SHMEMSimulatorGroup
+class SHMEMGrid(object):
     """
-    def __init__(self, index, sim, grid):
+    Class which represents an SHMEM grid of GPUs. Facilitates easy communication between
+    neighboring subdomains in the grid. Contains one CUDA context per subdomain.
+
+    XXX: Adapted to debug on a single GPU. Either remove this possibility or 
+    make it less hacky...
+    """
+    def __init__(self, ngpus=None, ndims=2):
         self.logger =  logging.getLogger(__name__)
+
+        cuda.init(flags=0)
+        self.logger.info("Initializing CUDA")
+        num_cuda_devices = cuda.Device.count()
         
-        autotuner = sim.context.autotuner
-        sim.context.autotuner = None;
-        boundary_conditions = sim.getBoundaryConditions()
-        super().__init__(sim.context, 
-            sim.nx, sim.ny, 
-            sim.dx, sim.dy, 
+        if ngpus is None:
+            #ngpus = num_cuda_devices
+            ngpus = 2
+
+        #assert ngpus <= num_cuda_devices, "Trying to allocate more GPUs than are available in the system."   
+        assert ndims == 2, "Unsupported number of dimensions. Must be two at the moment"
+        #assert ngpus >= 2, "Must have at least two GPUs available to run multi-GPU simulations."
+
+        self.ngpus = ngpus
+        self.ndims = ndims
+
+        self.grid = SHMEMGrid.getGrid(self.ngpus, self.ndims)
+        
+        self.logger.debug("Created {:}-dimensional SHMEM grid, using {:} GPUs".format(
+                self.ndims, self.ngpus))    
+
+        # XXX: Is this a natural place to store the contexts? Consider moving contexts out of this class.
+        self.cuda_contexts = []
+
+        for i in range(self.ngpus):
+            #self.cuda_contexts.append(CudaContext.CudaContext(device=i, autotuning=False))
+            self.cuda_contexts.append(CudaContext.CudaContext(device=0, autotuning=False))
+
+    def getCoordinate(self, index):
+        i = (index  % self.grid[0])
+        j = (index // self.grid[0])
+        return i, j
+
+    def getIndex(self, i, j):
+        return j*self.grid[0] + i
+
+    def getEast(self, index):
+        i, j = self.getCoordinate(index)
+        i = (i+1) % self.grid[0]
+        return self.getIndex(i, j)
+
+    def getWest(self, index):
+        i, j = self.getCoordinate(index)
+        i = (i+self.grid[0]-1) % self.grid[0]
+        return self.getIndex(i, j)
+
+    def getNorth(self, index):
+        i, j = self.getCoordinate(index)
+        j = (j+1) % self.grid[1]
+        return self.getIndex(i, j)
+
+    def getSouth(self, index):
+        i, j = self.getCoordinate(index)
+        j = (j+self.grid[1]-1) % self.grid[1]
+        return self.getIndex(i, j)
+    
+    def getGrid(num_gpus, num_dims):
+        assert(isinstance(num_gpus, int))
+        assert(isinstance(num_dims, int))
+        
+        # Adapted from https://stackoverflow.com/questions/28057307/factoring-a-number-into-roughly-equal-factors
+        # Original code by https://stackoverflow.com/users/3928385/ishamael
+        # Factorizes a number into n roughly equal factors
+
+        #Dictionary to remember already computed permutations
+        memo = {}
+        def dp(n, left): # returns tuple (cost, [factors])
+            """
+            Recursively searches through all factorizations
+            """
+
+            #Already tried: return existing result
+            if (n, left) in memo: 
+                return memo[(n, left)]
+
+            #Spent all factors: return number itself
+            if left == 1:
+                return (n, [n])
+
+            #Find new factor
+            i = 2
+            best = n
+            bestTuple = [n]
+            while i * i < n:
+                #If factor found
+                if n % i == 0:
+                    #Factorize remainder
+                    rem = dp(n // i, left - 1)
+
+                    #If new permutation better, save it
+                    if rem[0] + i < best:
+                        best = rem[0] + i
+                        bestTuple = [i] + rem[1]
+                i += 1
+
+            #Store calculation
+            memo[(n, left)] = (best, bestTuple)
+            return memo[(n, left)]
+
+
+        grid = dp(num_gpus, num_dims)[1]
+
+        if (len(grid) < num_dims):
+            #Split problematic 4
+            if (4 in grid):
+                grid.remove(4)
+                grid.append(2)
+                grid.append(2)
+
+            #Pad with ones to guarantee num_dims
+            grid = grid + [1]*(num_dims - len(grid))
+        
+        #Sort in descending order
+        grid = np.sort(grid)
+        grid = grid[::-1]
+        
+        return grid
+
+class SHMEMSimulatorGroup(Simulator.BaseSimulator):
+    """
+    Class which handles communication and synchronization between simulators in different 
+    contexts (presumably on different GPUs)
+    """
+    def __init__(self, grid, **kwargs):
+        self.logger =  logging.getLogger(__name__)
+        sims = []
+
+        for i in range(grid.ngpus):
+            local_sim = EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**kwargs)
+            sims[i] = SHMEMSimulator(i, local_sim, grid)
+        
+        autotuner = sims[0].context.autotuner
+        sims[0].context.autotuner = None;
+        boundary_conditions = sims[0].getBoundaryConditions()
+        super().__init__(sims[0].context, 
+            sims[0].nx, sims[0].ny, 
+            sims[0].dx, sims[0].dy, 
             boundary_conditions,
-            sim.cfl_scale,
-            sim.num_substeps,  
-            sim.block_size[0], sim.block_size[1])
-        sim.context.autotuner = autotuner
+            sims[0].cfl_scale,
+            sims[0].num_substeps,  
+            sims[0].block_size[0], sims[0].block_size[1])
+        sims[0].context.autotuner = autotuner
         
-        self.index = index
-        self.sim = sim
+        self.nsubdomains = grid.ngpus
+        self.sims = sims
         self.grid = grid
-        
-        #Get neighbor subdomain ids
-        self.east = grid.getEast(self.index)
-        self.west = grid.getWest(self.index)
-        self.north = grid.getNorth(self.index)
-        self.south = grid.getSouth(self.index)
         
         #Get coordinate of this subdomain
         #and handle global boundary conditions
@@ -88,37 +216,10 @@ class SHMEMSimulator(Simulator.BaseSimulator):
         nx = int(self.sim.nx)
         ny = int(self.sim.ny)
         
-        #Set regions for ghost cells to read from
-        #These have the format [x0, y0, width, height]
-        self.read_e = np.array([  nx,    0, gc_x, ny + 2*gc_y])
-        self.read_w = np.array([gc_x,    0, gc_x, ny + 2*gc_y])
-        self.read_n = np.array([gc_x,   ny,   nx,        gc_y])
-        self.read_s = np.array([gc_x, gc_y,   nx,        gc_y])
-        
-        #Set regions for ghost cells to write to
-        self.write_e = self.read_e + np.array([gc_x, 0, 0, 0])
-        self.write_w = self.read_w - np.array([gc_x, 0, 0, 0])
-        self.write_n = self.read_n + np.array([0, gc_y, 0, 0])
-        self.write_s = self.read_s - np.array([0, gc_y, 0, 0])
-        
-        #Allocate data for receiving
-        #Note that east and west also transfer ghost cells
-        #whilst north/south only transfer internal cells
-        #Reuses the width/height defined in the read-extets above
-        self.in_e = np.empty((self.nvars, self.read_e[3], self.read_e[2]), dtype=np.float32)
-        self.in_w = np.empty((self.nvars, self.read_w[3], self.read_w[2]), dtype=np.float32)
-        self.in_n = np.empty((self.nvars, self.read_n[3], self.read_n[2]), dtype=np.float32)
-        self.in_s = np.empty((self.nvars, self.read_s[3], self.read_s[2]), dtype=np.float32)
-        
-        #Allocate data for sending
-        self.out_e = np.empty_like(self.in_e)
-        self.out_w = np.empty_like(self.in_w)
-        self.out_n = np.empty_like(self.in_n)
-        self.out_s = np.empty_like(self.in_s)
-        
-        self.logger.debug("Simlator subdomain {:d} initialized on context {:s}".format(self.index, sim.context))
+        self.logger.debug("Initialized {:d} subdomains".format(len(self.sims)))
     
         
+    # TODO: Re-implement methods below
     def substep(self, dt, step_number):
         self.exchange()
         self.sim.substep(dt, step_number)
@@ -155,7 +256,7 @@ class SHMEMSimulator(Simulator.BaseSimulator):
         
     def exchange(self):        
         ns_download_before_exchange()
-        # GLOBAL SYNC 
+        # GLOBAL SYNC
         ns_do_exchange()
         # GLOBAL SYNC
         ns_upload_after_exchange()
