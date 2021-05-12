@@ -164,12 +164,15 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         self.logger =  logging.getLogger(__name__)
         sims = []
 
+        assert(grid.ngpus > 0)
+
         for i in range(grid.ngpus):
-            local_sim = EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**kwargs)
-            sims[i] = SHMEMSimulator(i, local_sim, grid)
+            kwargs['context'] = grid.cuda_contexts[i]
+            sims.append(EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**kwargs))
+            #sims[i] = SHMEMSimulator(i, local_sim, grid) # 1st attempt: no wrapper (per sim)
         
         autotuner = sims[0].context.autotuner
-        sims[0].context.autotuner = None;
+        sims[0].context.autotuner = None
         boundary_conditions = sims[0].getBoundaryConditions()
         super().__init__(sims[0].context, 
             sims[0].nx, sims[0].ny, 
@@ -183,171 +186,183 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         self.nsubdomains = grid.ngpus
         self.sims = sims
         self.grid = grid
+
+        self.east = []
+        self.west = []
+        self.north = []
+        self.south = []
+
+        self.nvars = []
+
+        self.read_e = []
+        self.read_w = []
+        self.read_n = []
+        self.read_s = []
         
-        #Get coordinate of this subdomain
-        #and handle global boundary conditions
-        new_boundary_conditions = Simulator.BoundaryCondition({
-            'north': Simulator.BoundaryCondition.Type.Dirichlet,
-            'south': Simulator.BoundaryCondition.Type.Dirichlet,
-            'east': Simulator.BoundaryCondition.Type.Dirichlet,
-            'west': Simulator.BoundaryCondition.Type.Dirichlet
-        })
-        gi, gj = grid.getCoordinate(self.index)
-        if (gi == 0 and boundary_conditions.west != Simulator.BoundaryCondition.Type.Periodic):
-            self.west = None
-            new_boundary_conditions.west = boundary_conditions.west;
-        if (gj == 0 and boundary_conditions.south != Simulator.BoundaryCondition.Type.Periodic):
-            self.south = None
-            new_boundary_conditions.south = boundary_conditions.south;
-        if (gi == grid.grid[0]-1 and boundary_conditions.east != Simulator.BoundaryCondition.Type.Periodic):
-            self.east = None
-            new_boundary_conditions.east = boundary_conditions.east;
-        if (gj == grid.grid[1]-1 and boundary_conditions.north != Simulator.BoundaryCondition.Type.Periodic):
-            self.north = None
-            new_boundary_conditions.north = boundary_conditions.north;
-        sim.setBoundaryConditions(new_boundary_conditions)
-                
-        #Get number of variables
-        self.nvars = len(self.getOutput().gpu_variables)
+        self.write_e = []
+        self.write_w = []
+        self.write_n = []
+        self.write_s = []
+
+        self.e = []
+        self.w = []
+        self.n = []
+        self.s = []
         
-        #Shorthands for computing extents and sizes
-        gc_x = int(self.sim.getOutput()[0].x_halo)
-        gc_y = int(self.sim.getOutput()[0].y_halo)
-        nx = int(self.sim.nx)
-        ny = int(self.sim.ny)
-        
+        for i, sim in enumerate(self.sims):
+            #Get neighbor subdomain ids
+            self.east[i] = grid.getEast(self.index)
+            self.west[i] = grid.getWest(self.index)
+            self.north[i] = grid.getNorth(self.index)
+            self.south[i] = grid.getSouth(self.index)
+            
+            #Get coordinate of this subdomain
+            #and handle global boundary conditions
+            new_boundary_conditions = Simulator.BoundaryCondition({
+                'north': Simulator.BoundaryCondition.Type.Dirichlet,
+                'south': Simulator.BoundaryCondition.Type.Dirichlet,
+                'east': Simulator.BoundaryCondition.Type.Dirichlet,
+                'west': Simulator.BoundaryCondition.Type.Dirichlet
+            })
+            gi, gj = grid.getCoordinate(i)
+            if (gi == 0 and boundary_conditions.west != Simulator.BoundaryCondition.Type.Periodic):
+                self.west = None
+                new_boundary_conditions.west = boundary_conditions.west;
+            if (gj == 0 and boundary_conditions.south != Simulator.BoundaryCondition.Type.Periodic):
+                self.south = None
+                new_boundary_conditions.south = boundary_conditions.south;
+            if (gi == grid.grid[0]-1 and boundary_conditions.east != Simulator.BoundaryCondition.Type.Periodic):
+                self.east = None
+                new_boundary_conditions.east = boundary_conditions.east;
+            if (gj == grid.grid[1]-1 and boundary_conditions.north != Simulator.BoundaryCondition.Type.Periodic):
+                self.north = None
+                new_boundary_conditions.north = boundary_conditions.north;
+            sim.setBoundaryConditions(new_boundary_conditions)
+                    
+            #Get number of variables
+            self.nvars[i] = len(sim.getOutput().gpu_variables)
+            
+            #Shorthands for computing extents and sizes
+            gc_x = int(sim.getOutput()[0].x_halo)
+            gc_y = int(sim.getOutput()[0].y_halo)
+            nx = int(sim.nx)
+            ny = int(sim.ny)
+            
+            #Set regions for ghost cells to read from
+            #These have the format [x0, y0, width, height]
+            self.read_e.append(np.array([  nx,    0, gc_x, ny + 2*gc_y]))
+            self.read_w.append(np.array([gc_x,    0, gc_x, ny + 2*gc_y]))
+            self.read_n.append(np.array([gc_x,   ny,   nx,        gc_y]))
+            self.read_s.append(np.array([gc_x, gc_y,   nx,        gc_y]))
+            
+            #Set regions for ghost cells to write to
+            self.write_e.append(self.read_e + np.array([gc_x, 0, 0, 0]))
+            self.write_w.append(self.read_w - np.array([gc_x, 0, 0, 0]))
+            self.write_n.append(self.read_n + np.array([0, gc_y, 0, 0]))
+            self.write_s.append(self.read_s - np.array([0, gc_y, 0, 0]))
+            
+            #Allocate host data
+            #Note that east and west also transfer ghost cells
+            #whilst north/south only transfer internal cells
+            #Reuses the width/height defined in the read-extets above
+            self.e.append(np.empty((self.nvars, self.read_e[3], self.read_e[2]), dtype=np.float32))
+            self.w.append(np.empty((self.nvars, self.read_w[3], self.read_w[2]), dtype=np.float32))
+            self.n.append(np.empty((self.nvars, self.read_n[3], self.read_n[2]), dtype=np.float32))
+            self.s.append(np.empty((self.nvars, self.read_s[3], self.read_s[2]), dtype=np.float32))
+
         self.logger.debug("Initialized {:d} subdomains".format(len(self.sims)))
     
-        
-    # TODO: Re-implement methods below
+
     def substep(self, dt, step_number):
-        self.exchange()
-        self.sim.substep(dt, step_number)
+        for i, sim in enumerate(self.sims):
+            self.exchange(i)
+            sim.substep(dt, step_number)
     
     def getOutput(self):
-        return self.sim.getOutput()
+        # XXX: Does not return what we would expect.
+        return self.sims[0].getOutput() 
         
     def synchronize(self):
-        self.sim.synchronize()
+        for sim in self.sims:
+            sim.synchronize()
         
     def check(self):
-        return self.sim.check()
+        # XXX: Does not return what we would expect.
+        return self.sims[0].check()
     
     def computeDt(self):
-        local_dt = np.array([np.float32(self.sim.computeDt())])
-        global_dt = np.empty(1, dtype=np.float32)
-        self.grid.comm.Allreduce(local_dt, global_dt, op=MPI.MIN)
-        self.logger.debug("Local dt: {:f}, global dt: {:f}".format(local_dt[0], global_dt[0]))
-        return global_dt[0]
+        global_dt = float("inf")
+
+        for sim in self.sims:
+            local_dt = sim.computeDt()
+            if local_dt < global_dt:
+                global_dt = local_dt
+            self.logger.debug("Local dt: {:f}".format(local_dt))
+
+        self.logger.debug("Global dt: {:f}".format(global_dt))
+        return global_dt
         
-    def getExtent(self):
+    def getExtent(self, index):
         """
         Function which returns the extent of the subdomain with index 
         index in the grid
         """
-        width = self.sim.nx*self.sim.dx
-        height = self.sim.ny*self.sim.dy
-        i, j = self.grid.getCoordinate(self.index)
+        width = self.sims[index].nx*self.sims[index].dx
+        height = self.sims[index].ny*self.sims[index].dy
+        i, j = self.grid.getCoordinate(index)
         x0 = i * width
         y0 = j * height 
         x1 = x0 + width
         y1 = y0 + height
         return [x0, x1, y0, y1]
         
-    def exchange(self):        
-        ns_download_before_exchange()
-        # GLOBAL SYNC
-        ns_do_exchange()
-        # GLOBAL SYNC
-        ns_upload_after_exchange()
-
-        ew_download_before_exchange()
-        # GLOBAL SYNC
-        ew_do_exchange()
-        # GLOBAL SYNC
-        ew_upload_after_exchange()
-
-    def ns_download_before_exchange(self):
+    def exchange(self, i):
         ####
         # First transfer internal cells north-south
         ####
-        
-        #Download from the GPU
-        if self.north is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], asynch=True, extent=self.read_n)
-        if self.south is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], asynch=True, extent=self.read_s)
-        self.sim.stream.synchronize()
+        self.ns_download(i)
+        self.ns_upload(i)
 
-    def ns_do_exchange(self):
-        #Send/receive to north/south neighbours
-        comm_send = []
-        comm_recv = []
-        if self.north is not None:
-            comm_send += [self.grid.comm.Isend(self.out_n, dest=self.north, tag=4*self.nt + 0)]
-            comm_recv += [self.grid.comm.Irecv(self.in_n, source=self.north, tag=4*self.nt + 1)]
-        if self.south is not None:
-            comm_send += [self.grid.comm.Isend(self.out_s, dest=self.south, tag=4*self.nt + 1)]
-            comm_recv += [self.grid.comm.Irecv(self.in_s, source=self.south, tag=4*self.nt + 0)]
-        
-        #Wait for incoming transfers to complete
-        for comm in comm_recv:
-            comm.wait()
-
-    def ns_upload_after_exchange(self):
-        #Upload to the GPU
-        if self.north is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].upload(self.sim.stream, self.in_n[k,:,:], extent=self.write_n)
-        if self.south is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].upload(self.sim.stream, self.in_s[k,:,:], extent=self.write_s)
-        
-        #Wait for sending to complete
-        for comm in comm_send:
-            comm.wait()
-
-    def ew_download_before_exchange(self):
         ####
         # Then transfer east-west including ghost cells that have been filled in by north-south transfer above
         ####
-        
+        self.ew_download(i)
+        self.ew_upload(i)
+
+    def ns_download(self, i):
         #Download from the GPU
-        if self.east is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], asynch=True, extent=self.read_e)
-        if self.west is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], asynch=True, extent=self.read_w)
-        self.sim.stream.synchronize()
+        if self.north[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.n[i][k,:,:], asynch=True, extent=self.read_n[i])
+        if self.south[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.s[i][k,:,:], asynch=True, extent=self.read_s[i])
+        self.sims[i].stream.synchronize()
 
-    def ew_do_exchange(self):
-        #Send/receive to east/west neighbours
-        comm_send = []
-        comm_recv = []
-        if self.east is not None:
-            comm_send += [self.grid.comm.Isend(self.out_e, dest=self.east, tag=4*self.nt + 2)]
-            comm_recv += [self.grid.comm.Irecv(self.in_e, source=self.east, tag=4*self.nt + 3)]
-        if self.west is not None:
-            comm_send += [self.grid.comm.Isend(self.out_w, dest=self.west, tag=4*self.nt + 3)]
-            comm_recv += [self.grid.comm.Irecv(self.in_w, source=self.west, tag=4*self.nt + 2)]
-        
-        
-        #Wait for incoming transfers to complete
-        for comm in comm_recv:
-            comm.wait()
-
-    def ew_upload_after_exchange(self):
+    def ns_upload(self, i):
         #Upload to the GPU
-        if self.east is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].upload(self.sim.stream, self.in_e[k,:,:], extent=self.write_e)
-        if self.west is not None:
-            for k in range(self.nvars):
-                self.sim.u0[k].upload(self.sim.stream, self.in_w[k,:,:], extent=self.write_w)
+        if self.north[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].upload(self.sims[i].stream, self.s[self.north[i]][k,:,:], extent=self.write_n[i])
+        if self.south[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].upload(self.sims[i].stream, self.n[self.south[i]][k,:,:], extent=self.write_s[i])
         
-        #Wait for sending to complete
-        for comm in comm_send:
-            comm.wait()
+    def ew_download(self, i):
+        #Download from the GPU
+        if self.east[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.e[i][k,:,:], asynch=True, extent=self.read_e[i])
+        if self.west[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.w[i][k,:,:], asynch=True, extent=self.read_w[i])
+        self.sims[i].stream.synchronize()
+
+    def ew_upload(self, i):
+        #Upload to the GPU
+        if self.east[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].upload(self.sims[i].stream, self.w[self.east[i]][k,:,:], extent=self.write_e[i])
+        if self.west[i] is not None:
+            for k in range(self.nvars[i]):
+                self.sims[i].u0[k].upload(self.sims[i].stream, self.e[self.west[i]][k,:,:], extent=self.write_w[i])

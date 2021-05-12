@@ -27,7 +27,7 @@ import json
 import logging
 
 #Simulator engine etc
-from GPUSimulators import SHMEMSimulator, Common, CudaContext
+from GPUSimulators import SHMEMSimulatorGroup, Common, CudaContext
 from GPUSimulators import EE2D_KP07_dimsplit
 from GPUSimulators.helpers import InitialConditions as IC
 from GPUSimulators.Simulator import BoundaryCondition as BC
@@ -63,7 +63,7 @@ logger.info("File logger using level %s to %s", logging.getLevelName(log_level_f
 nsubdomains = 2
 
 logger.info("Creating SHMEM grid")
-grid = SHMEMSimulator.SHMEMGrid(ngpus=nsubdomains)
+grid = SHMEMSimulatorGroup.SHMEMGrid(ngpus=nsubdomains)
 
 
 
@@ -77,15 +77,15 @@ gamma = 1.4
 save_times = np.linspace(0, 5.0, 10)
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
-outfile = outfile[i] = "shmem_out.nc"
+outfile = "shmem_out.nc"
 
 #outfile[i] = "shmem_out_" + str(i) + ".nc"
 #arguments = []
-local_sim = []
+#local_sim = []
 #sim = []
 
 arguments = IC.genKelvinHelmholtz(nx, ny, gamma, grid=grid)
-arguments['context'] = grid.cuda_contexts[i]
+arguments['context'] = grid.cuda_contexts[0]
 arguments['theta'] = 1.2
 arguments['grid'] = grid
 
@@ -95,7 +95,7 @@ arguments['grid'] = grid
 logger.info("Running simulation")
 #Helper function to create SHMEM simulator
 def genSim(grid, **kwargs):
-    sim = SHMEMSimulatorGroup.SHMEMSimulatorGroup(i, local_sims, grid, **kwargs)
+    sim = SHMEMSimulatorGroup.SHMEMSimulatorGroup(grid, **kwargs)
     return sim
 
 outfile = Common.runSimulation(genSim, arguments, outfile, save_times, save_var_names)
