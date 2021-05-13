@@ -74,7 +74,7 @@ logger.info("Generating initial conditions")
 nx = 128
 ny = 128
 gamma = 1.4
-save_times = np.linspace(0, 5.0, 10)
+save_times = np.linspace(0, 0.01, 10)
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
 outfile = "shmem_out.nc"
@@ -84,18 +84,29 @@ outfile = "shmem_out.nc"
 #local_sim = []
 #sim = []
 
-arguments = IC.genKelvinHelmholtz(nx, ny, gamma, grid=grid)
-arguments['context'] = grid.cuda_contexts[0]
-arguments['theta'] = 1.2
-arguments['grid'] = grid
+
 
 ####
 # Run simulation
 ####
 logger.info("Running simulation")
+
+sims = []
+for i in range(grid.ngpus):
+    arguments = IC.genKelvinHelmholtz(nx, ny, gamma, grid=grid, index=i)
+    arguments['context'] = grid.cuda_contexts[i]
+    arguments['theta'] = 1.2
+
+    sims.append(EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**arguments))
+    #sims[i] = SHMEMSimulator(i, local_sim, grid) # 1st attempt: no wrapper (per sim)
+
+arguments['sims'] = sims
+arguments['grid'] = grid
+
 #Helper function to create SHMEM simulator
-def genSim(grid, **kwargs):
-    sim = SHMEMSimulatorGroup.SHMEMSimulatorGroup(grid, **kwargs)
+def genSim(sims, grid, **kwargs):
+    # XXX: kwargs not used, since the simulators are already instantiated in the for-loop above
+    sim = SHMEMSimulatorGroup.SHMEMSimulatorGroup(sims, grid)
     return sim
 
 outfile = Common.runSimulation(genSim, arguments, outfile, save_times, save_var_names)

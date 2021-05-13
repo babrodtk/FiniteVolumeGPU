@@ -26,6 +26,7 @@ import numpy as np
 
 import pycuda.driver as cuda
 
+import time
 
 class SHMEMGrid(object):
     """
@@ -160,16 +161,12 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
     Class which handles communication and synchronization between simulators in different 
     contexts (presumably on different GPUs)
     """
-    def __init__(self, grid, **kwargs):
+    def __init__(self, sims, grid):
         self.logger =  logging.getLogger(__name__)
-        sims = []
+    
+        assert(len(sims) > 1)
 
-        assert(grid.ngpus > 0)
-
-        for i in range(grid.ngpus):
-            kwargs['context'] = grid.cuda_contexts[i]
-            sims.append(EE2D_KP07_dimsplit.EE2D_KP07_dimsplit(**kwargs))
-            #sims[i] = SHMEMSimulator(i, local_sim, grid) # 1st attempt: no wrapper (per sim)
+        self.sims = sims
         
         autotuner = sims[0].context.autotuner
         sims[0].context.autotuner = None
@@ -187,34 +184,34 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         self.sims = sims
         self.grid = grid
 
-        self.east = []
-        self.west = []
-        self.north = []
-        self.south = []
+        self.east = [None] * len(self.sims)
+        self.west = [None] * len(self.sims)
+        self.north = [None] * len(self.sims)
+        self.south = [None] * len(self.sims)
 
-        self.nvars = []
+        self.nvars = [None] * len(self.sims)
 
-        self.read_e = []
-        self.read_w = []
-        self.read_n = []
-        self.read_s = []
+        self.read_e = [None] * len(self.sims)
+        self.read_w = [None] * len(self.sims)
+        self.read_n = [None] * len(self.sims)
+        self.read_s = [None] * len(self.sims)
         
-        self.write_e = []
-        self.write_w = []
-        self.write_n = []
-        self.write_s = []
+        self.write_e = [None] * len(self.sims)
+        self.write_w = [None] * len(self.sims)
+        self.write_n = [None] * len(self.sims)
+        self.write_s = [None] * len(self.sims)
 
-        self.e = []
-        self.w = []
-        self.n = []
-        self.s = []
+        self.e = [None] * len(self.sims)
+        self.w = [None] * len(self.sims)
+        self.n = [None] * len(self.sims)
+        self.s = [None] * len(self.sims)
         
         for i, sim in enumerate(self.sims):
             #Get neighbor subdomain ids
-            self.east[i] = grid.getEast(self.index)
-            self.west[i] = grid.getWest(self.index)
-            self.north[i] = grid.getNorth(self.index)
-            self.south[i] = grid.getSouth(self.index)
+            self.east[i] = grid.getEast(i)
+            self.west[i] = grid.getWest(i)
+            self.north[i] = grid.getNorth(i)
+            self.south[i] = grid.getSouth(i)
             
             #Get coordinate of this subdomain
             #and handle global boundary conditions
@@ -250,32 +247,33 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
             
             #Set regions for ghost cells to read from
             #These have the format [x0, y0, width, height]
-            self.read_e.append(np.array([  nx,    0, gc_x, ny + 2*gc_y]))
-            self.read_w.append(np.array([gc_x,    0, gc_x, ny + 2*gc_y]))
-            self.read_n.append(np.array([gc_x,   ny,   nx,        gc_y]))
-            self.read_s.append(np.array([gc_x, gc_y,   nx,        gc_y]))
+            self.read_e[i] = np.array([  nx,    0, gc_x, ny + 2*gc_y])
+            self.read_w[i] = np.array([gc_x,    0, gc_x, ny + 2*gc_y])
+            self.read_n[i] = np.array([gc_x,   ny,   nx,        gc_y])
+            self.read_s[i] = np.array([gc_x, gc_y,   nx,        gc_y])
             
             #Set regions for ghost cells to write to
-            self.write_e.append(self.read_e + np.array([gc_x, 0, 0, 0]))
-            self.write_w.append(self.read_w - np.array([gc_x, 0, 0, 0]))
-            self.write_n.append(self.read_n + np.array([0, gc_y, 0, 0]))
-            self.write_s.append(self.read_s - np.array([0, gc_y, 0, 0]))
+            self.write_e[i] = self.read_e[i] + np.array([gc_x, 0, 0, 0])
+            self.write_w[i] = self.read_w[i] - np.array([gc_x, 0, 0, 0])
+            self.write_n[i] = self.read_n[i] + np.array([0, gc_y, 0, 0])
+            self.write_s[i] = self.read_s[i] - np.array([0, gc_y, 0, 0])
             
             #Allocate host data
             #Note that east and west also transfer ghost cells
             #whilst north/south only transfer internal cells
             #Reuses the width/height defined in the read-extets above
-            self.e.append(np.empty((self.nvars, self.read_e[3], self.read_e[2]), dtype=np.float32))
-            self.w.append(np.empty((self.nvars, self.read_w[3], self.read_w[2]), dtype=np.float32))
-            self.n.append(np.empty((self.nvars, self.read_n[3], self.read_n[2]), dtype=np.float32))
-            self.s.append(np.empty((self.nvars, self.read_s[3], self.read_s[2]), dtype=np.float32))
+            self.e[i] = np.empty((self.nvars[i], self.read_e[i][3], self.read_e[i][2]), dtype=np.float32)
+            self.w[i] = np.empty((self.nvars[i], self.read_w[i][3], self.read_w[i][2]), dtype=np.float32)
+            self.n[i] = np.empty((self.nvars[i], self.read_n[i][3], self.read_n[i][2]), dtype=np.float32)
+            self.s[i] = np.empty((self.nvars[i], self.read_s[i][3], self.read_s[i][2]), dtype=np.float32)
 
         self.logger.debug("Initialized {:d} subdomains".format(len(self.sims)))
     
 
     def substep(self, dt, step_number):
+        self.exchange()
+
         for i, sim in enumerate(self.sims):
-            self.exchange(i)
             sim.substep(dt, step_number)
     
     def getOutput(self):
@@ -293,6 +291,8 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
     def computeDt(self):
         global_dt = float("inf")
 
+        # XXX: Global sync is needed here
+
         for sim in self.sims:
             local_dt = sim.computeDt()
             if local_dt < global_dt:
@@ -302,7 +302,7 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         self.logger.debug("Global dt: {:f}".format(global_dt))
         return global_dt
         
-    def getExtent(self, index):
+    def getExtent(self, index=0):
         """
         Function which returns the extent of the subdomain with index 
         index in the grid
@@ -316,18 +316,28 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         y1 = y0 + height
         return [x0, x1, y0, y1]
         
-    def exchange(self, i):
+    def exchange(self):
         ####
         # First transfer internal cells north-south
         ####
-        self.ns_download(i)
-        self.ns_upload(i)
+        for i in range(len(self.sims)):
+            self.ns_download(i)
+
+        # XXX: Global sync is needed here
+        
+        for i in range(len(self.sims)):
+            self.ns_upload(i)
 
         ####
         # Then transfer east-west including ghost cells that have been filled in by north-south transfer above
         ####
-        self.ew_download(i)
-        self.ew_upload(i)
+        for i in range(len(self.sims)):
+            self.ew_download(i)
+
+        # XXX: Global sync is needed here
+        
+        for i in range(len(self.sims)):
+            self.ew_upload(i)
 
     def ns_download(self, i):
         #Download from the GPU
@@ -363,6 +373,10 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         if self.east[i] is not None:
             for k in range(self.nvars[i]):
                 self.sims[i].u0[k].upload(self.sims[i].stream, self.w[self.east[i]][k,:,:], extent=self.write_e[i])
+                #test_east = np.ones_like(self.e[self.east[i]][k,:,:])
+                #self.sims[i].u0[k].upload(self.sims[i].stream, test_east, extent=self.write_e[i])
         if self.west[i] is not None:
             for k in range(self.nvars[i]):
                 self.sims[i].u0[k].upload(self.sims[i].stream, self.e[self.west[i]][k,:,:], extent=self.write_w[i])
+                #test_west = np.ones_like(self.e[self.west[i]][k,:,:])
+                #self.sims[i].u0[k].upload(self.sims[i].stream, test_west, extent=self.write_w[i])
