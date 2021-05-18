@@ -32,9 +32,6 @@ class SHMEMGrid(object):
     """
     Class which represents an SHMEM grid of GPUs. Facilitates easy communication between
     neighboring subdomains in the grid. Contains one CUDA context per subdomain.
-
-    XXX: Adapted to debug on a single GPU. Either remove this possibility or 
-    make it less hacky...
     """
     def __init__(self, ngpus=None, ndims=2):
         self.logger =  logging.getLogger(__name__)
@@ -44,13 +41,14 @@ class SHMEMGrid(object):
         num_cuda_devices = cuda.Device.count()
         
         if ngpus is None:
-            #ngpus = num_cuda_devices
-            ngpus = 2
-
+            ngpus = num_cuda_devices
+        
+        # XXX: disabled for testing on single-GPU system
         #assert ngpus <= num_cuda_devices, "Trying to allocate more GPUs than are available in the system."   
-        assert ndims == 2, "Unsupported number of dimensions. Must be two at the moment"
         #assert ngpus >= 2, "Must have at least two GPUs available to run multi-GPU simulations."
 
+        assert ndims == 2, "Unsupported number of dimensions. Must be two at the moment"
+        
         self.ngpus = ngpus
         self.ndims = ndims
 
@@ -59,10 +57,12 @@ class SHMEMGrid(object):
         self.logger.debug("Created {:}-dimensional SHMEM grid, using {:} GPUs".format(
                 self.ndims, self.ngpus))    
 
-        # XXX: Is this a natural place to store the contexts? Consider moving contexts out of this class.
+        # XXX: Is this a natural place to store the contexts? Consider moving contexts out of this 
+        # class, into notebook / calling script (shmemTesting.py)
         self.cuda_contexts = []
 
         for i in range(self.ngpus):
+            # XXX: disabled for testing on single-GPU system
             #self.cuda_contexts.append(CudaContext.CudaContext(device=i, autotuning=False))
             self.cuda_contexts.append(CudaContext.CudaContext(device=0, autotuning=False))
 
@@ -168,6 +168,13 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
 
         self.sims = sims
         
+        # XXX: This is not what was intended. Do we need extra wrapper class SHMEMSimulator?
+        # See also getOutput() and check().
+        #
+        # SHMEMSimulatorGroup would then not have any superclass, but manage a collection of
+        # SHMEMSimulators that have BaseSimulator as a superclass.
+        #
+        # This would also eliminate the need for all the array bookkeeping in this class.
         autotuner = sims[0].context.autotuner
         sims[0].context.autotuner = None
         boundary_conditions = sims[0].getBoundaryConditions()
@@ -278,6 +285,7 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
     
     def getOutput(self):
         # XXX: Does not return what we would expect.
+        # Returns first subdomain, but we want the whole domain.
         return self.sims[0].getOutput() 
         
     def synchronize(self):
@@ -286,12 +294,14 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         
     def check(self):
         # XXX: Does not return what we would expect.
+        # Checks only first subdomain, but we want to check the whole domain.
         return self.sims[0].check()
     
     def computeDt(self):
         global_dt = float("inf")
 
-        # XXX: Global sync is needed here
+        for sim in self.sims:
+            sim.context.synchronize()
 
         for sim in self.sims:
             local_dt = sim.computeDt()
@@ -322,8 +332,6 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         ####
         for i in range(len(self.sims)):
             self.ns_download(i)
-
-        # XXX: Global sync is needed here
         
         for i in range(len(self.sims)):
             self.ns_upload(i)
@@ -333,8 +341,6 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         ####
         for i in range(len(self.sims)):
             self.ew_download(i)
-
-        # XXX: Global sync is needed here
         
         for i in range(len(self.sims)):
             self.ew_upload(i)
@@ -343,10 +349,12 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         #Download from the GPU
         if self.north[i] is not None:
             for k in range(self.nvars[i]):
-                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.n[i][k,:,:], asynch=True, extent=self.read_n[i])
+                # XXX: Unnecessary global sync (only need to sync with neighboring subdomain to the north)
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.n[i][k,:,:], extent=self.read_n[i])
         if self.south[i] is not None:
             for k in range(self.nvars[i]):
-                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.s[i][k,:,:], asynch=True, extent=self.read_s[i])
+                # XXX: Unnecessary global sync (only need to sync with neighboring subdomain to the south)
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.s[i][k,:,:], extent=self.read_s[i])
         self.sims[i].stream.synchronize()
 
     def ns_upload(self, i):
@@ -362,10 +370,12 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         #Download from the GPU
         if self.east[i] is not None:
             for k in range(self.nvars[i]):
-                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.e[i][k,:,:], asynch=True, extent=self.read_e[i])
+                # XXX: Unnecessary global sync (only need to sync with neighboring subdomain to the east)
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.e[i][k,:,:], extent=self.read_e[i])
         if self.west[i] is not None:
             for k in range(self.nvars[i]):
-                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.w[i][k,:,:], asynch=True, extent=self.read_w[i])
+                # XXX: Unnecessary global sync (only need to sync with neighboring subdomain to the west)
+                self.sims[i].u0[k].download(self.sims[i].stream, cpu_data=self.w[i][k,:,:], extent=self.read_w[i])
         self.sims[i].stream.synchronize()
 
     def ew_upload(self, i):

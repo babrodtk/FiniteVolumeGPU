@@ -60,10 +60,11 @@ logger.info("File logger using level %s to %s", logging.getLevelName(log_level_f
 ####
 # Initialize SHMEM grid etc
 ####
-nsubdomains = 2
 
 logger.info("Creating SHMEM grid")
-grid = SHMEMSimulatorGroup.SHMEMGrid(ngpus=nsubdomains)
+
+# XXX: need to explicitly set ngpus when testing on single-GPU system
+grid = SHMEMSimulatorGroup.SHMEMGrid(ngpus=4) 
 
 
 
@@ -78,13 +79,6 @@ save_times = np.linspace(0, 0.01, 10)
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
 outfile = "shmem_out.nc"
-
-#outfile[i] = "shmem_out_" + str(i) + ".nc"
-#arguments = []
-#local_sim = []
-#sim = []
-
-
 
 ####
 # Run simulation
