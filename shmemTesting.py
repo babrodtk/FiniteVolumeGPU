@@ -75,7 +75,8 @@ logger.info("Generating initial conditions")
 nx = 128
 ny = 128
 gamma = 1.4
-save_times = np.linspace(0, 0.01, 10)
+#save_times = np.linspace(0, 0.01, 10)
+save_times = np.linspace(0, 10, 10)
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
 outfile = "shmem_out.nc"

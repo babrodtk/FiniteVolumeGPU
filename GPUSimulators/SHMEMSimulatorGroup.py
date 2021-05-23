@@ -167,7 +167,7 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         assert(len(sims) > 1)
 
         self.sims = sims
-        
+
         # XXX: This is not what was intended. Do we need extra wrapper class SHMEMSimulator?
         # See also getOutput() and check().
         #
@@ -187,7 +187,6 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
             sims[0].block_size[0], sims[0].block_size[1])
         sims[0].context.autotuner = autotuner
         
-        self.nsubdomains = grid.ngpus
         self.sims = sims
         self.grid = grid
 
