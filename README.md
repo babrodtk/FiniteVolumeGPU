@@ -6,7 +6,7 @@ Connection and run details for all potential benchmark systems.
 ### OsloMet 2 x Quadro RTX 6000 (VPN necessary)
 Connect:  
 ssh -AX ip-from-webpage  
-For Jupyter Notebook: ssh -L 8080:localhost:80 ip-from-webpage and access localhost:8080 in browser
+For Jupyter Notebook: ssh -L 8888:localhost:80 ip-from-webpage and access localhost:8888 in browser
 
 ### Simula DGX-2
 Connect:  
