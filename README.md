@@ -3,7 +3,7 @@
 ## Systems
 Connection and run details for all potential benchmark systems.
 
-### OsloMet ? (VPN necessary)
+### OsloMet 2 x Quadro RTX 6000 (VPN necessary)
 Connect:  
 ssh -AX ip-from-webpage (or Jupyter Notebook through https)
 
@@ -17,7 +17,7 @@ dgx-2-test.job
 Submit:  
 sbatch dgx-2-test.job
 
-### PPI (VPN necessary)
+### PPI 4 x P100 (VPN necessary)
 Connect:  
 ssh -AX gpu-01.ppi.met.no  
 ssh -AX gpu-02.ppi.met.no  
@@ -27,7 +27,7 @@ ssh -AX gpu-04.ppi.met.no
 Submit:  
 run_script_ppi.sh
 
-### Saga
+### Saga 8 nodes with 4 x P100
 Connect:  
 ssh -AX saga.sigma2.no
 
