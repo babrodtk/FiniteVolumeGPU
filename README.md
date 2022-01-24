@@ -42,3 +42,5 @@ saga-test.job
 
 Submit:  
 sbatch saga-test.job
+
+### Granada: 2 x RTX 2080 + 1 x RTX "new" + X x P100
