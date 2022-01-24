@@ -6,7 +6,9 @@ Connection and run details for all potential benchmark systems.
 ### OsloMet 2 x Quadro RTX 6000 (VPN necessary)
 Connect:  
 ssh -AX ip-from-webpage  
-For Jupyter Notebook: ssh -L 8888:localhost:80 ip-from-webpage and access localhost:8888 in browser
+For Jupyter Notebook: ssh -L 8888:localhost:80 ip-from-webpage and access localhost:8888 in browser 
+conda activate ShallowWaterGPU_HPC 
+(one time operation) conda install -c conda-forge ipyparallel 
 
 ### Simula DGX-2
 Connect:  
