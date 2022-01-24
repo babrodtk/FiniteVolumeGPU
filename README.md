@@ -21,6 +21,8 @@ Example job script:
 dgx-2-test.job
 
 Submit:  
+module use /cm/shared/ex3-modules/latest/modulefiles   # Latest ex3-modules    
+module load slurm/20.02.7                              # To load slurm module  
 sbatch dgx-2-test.job
 
 ### PPI 4 x P100 (VPN necessary)
