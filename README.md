@@ -38,9 +38,9 @@ Connect:
 ssh -AX saga.sigma2.no
 
 Example job script:  
-saga-test.job
+saga-dev.job
 
 Submit:  
-sbatch saga-test.job
+sbatch saga-dev.job
 
 ### Granada: 2 x RTX 2080 + 1 x RTX "new" + X x P100
