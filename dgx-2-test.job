@@ -1,11 +1,11 @@
 #!/bin/bash
+# See http://wiki.ex3.simula.no before changing the values below
 #SBATCH -p dgx2q                   # partition (GPU queue)
 #SBATCH -N 1                       # number of nodes
 #SBATCH -n 4                       # number of cores
 #SBATCH -w g001                    # DGX-2 node
 #SBATCH --gres=gpu:4               # number of V100's
-#SBATCH --mem 10G                  # memory pool for all cores
-#    #SBATCH -t 0-00:10                 # time (D-HH:MM)
+#SBATCH -t 0-00:10                 # time (D-HH:MM)
 #SBATCH -o slurm.%N.%j.out  # STDOUT
 #SBATCH -e slurm.%N.%j.err  # STDERR
 
