@@ -10,8 +10,8 @@ ssh -AX ip-from-webpage
 For Jupyter Notebook:  
 ssh -L 8888:localhost:80 ip-from-webpage  
 (access localhost:8888 in browser and open terminal)  
-conda activate ShallowWaterGPU_HPC  
-(one time operation) conda install -c conda-forge ipyparallel  
+(one time operation) conda env create -f conda_environment.yml  
+conda activate ShallowWaterGPU / choose the "conda:ShallowWaterGPU" kernel in the notebook  
 
 ### Simula DGX-2
 Connect:  
