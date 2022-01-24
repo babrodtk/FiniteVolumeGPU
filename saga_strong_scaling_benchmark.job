@@ -3,7 +3,7 @@
 #SBATCH --job-name=ShallowWaterGPUStrongScaling
 #
 # Project:
-#SBATCH --account=nn9550k
+#SBATCH --account=nn9882k
 #
 # Wall clock limit:
 #SBATCH --time=10:00:00
