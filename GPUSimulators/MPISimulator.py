@@ -24,6 +24,7 @@ import logging
 from GPUSimulators import Simulator
 import numpy as np
 from mpi4py import MPI
+import time
 
 
 
@@ -199,7 +200,14 @@ class MPISimulator(Simulator.BaseSimulator):
     """
     Class which handles communication between simulators on different MPI nodes
     """
-    def __init__(self, sim, grid):
+    def __init__(self, sim, grid):        
+        self.profiling_data = { 'start': {}, 'end': {} }
+        self.profiling_data["start"]["t_halo_exchange"] = 0
+        self.profiling_data["end"]["t_halo_exchange"] = 0
+        self.profiling_data["start"]["t_step"] = 0
+        self.profiling_data["end"]["t_step"] = 0
+        self.profiling_data["n_time_steps"] = 0
+        self.profiling_data["start"]["t_mpi_sim_init"] = time.time()
         self.logger =  logging.getLogger(__name__)
         
         autotuner = sim.context.autotuner
@@ -284,11 +292,17 @@ class MPISimulator(Simulator.BaseSimulator):
         self.out_s = np.empty_like(self.in_s)
         
         self.logger.debug("Simlator rank {:d} initialized on {:s}".format(self.grid.comm.rank, MPI.Get_processor_name()))
-    
+        self.profiling_data["end"]["t_mpi_sim_init"] = time.time()
         
     def substep(self, dt, step_number):
+        self.profiling_data["start"]["t_halo_exchange"] += time.time()
         self.exchange()
+        self.profiling_data["end"]["t_halo_exchange"] += time.time()
+
+        self.profiling_data["start"]["t_step"] += time.time()
         self.sim.substep(dt, step_number)
+        self.profiling_data["end"]["t_step"] += time.time()
+        self.profiling_data["n_time_steps"] += 1
     
     def getOutput(self):
         return self.sim.getOutput()

@@ -49,8 +49,10 @@ parser.add_argument('--profile', action='store_true') # default: False
 args = parser.parse_args()
 
 if(args.profile):
+    profiling_data = {}
     # profiling: total run time
     t_total_start = time.time()
+    t_init_start = time.time()
 
 
 # Get MPI COMM to use
@@ -109,7 +111,7 @@ nx = args.nx
 ny = args.ny
 
 gamma = 1.4
-save_times = np.linspace(0, 0.02, 2)
+save_times = np.linspace(0, 0.1, 2)
 outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
@@ -118,6 +120,10 @@ arguments['context'] = cuda_context
 arguments['theta'] = 1.2
 arguments['grid'] = grid
 
+if(args.profile):
+    t_init_end = time.time()
+    t_init = t_init_end - t_init_start
+    profiling_data["t_init"] = t_init
 
 ####
 # Run simulation
@@ -132,12 +138,13 @@ def genSim(grid, **kwargs):
     return sim
 
 
-outfile = Common.runSimulation(
+outfile, sim_profiling_data = Common.runSimulation(
     genSim, arguments, outfile, save_times, save_var_names)
 
 if(args.profile):
     t_total_end = time.time()
     t_total = t_total_end - t_total_start
+    profiling_data["t_total"] = t_total
     print("Total run time on rank " + str(MPI.COMM_WORLD.rank) + " is " + str(t_total) + " s")
 
 # write profiling to json file
@@ -148,14 +155,19 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
         allocated_gpus = int(os.environ["CUDA_VISIBLE_DEVICES"].count(",") + 1)
         profiling_file = "MPI_jobid_" + \
             str(job_id) + "_" + str(allocated_nodes) + "_nodes_and_" + str(allocated_gpus) + "_GPUs_profiling.json"
+        profiling_data["outfile"] = outfile
     else:
-        profiling_file = "MPI_test_profiling.json"
+        profiling_file = "MPI_" + str(MPI.COMM_WORLD.size) + "_procs_and_" + str(num_cuda_devices) + "_GPUs_profiling.json"
 
-    write_profiling_data = {}
-    write_profiling_data["total"] = t_total
+    for stage in sim_profiling_data["start"].keys():
+        profiling_data[stage] = sim_profiling_data["end"][stage] - sim_profiling_data["start"][stage]
+
+    profiling_data["nx"] = nx
+    profiling_data["ny"] = ny
+    profiling_data["n_time_steps"] = sim_profiling_data["n_time_steps"]
 
     with open(profiling_file, "w") as write_file:
-        json.dump(write_profiling_data, write_file)
+        json.dump(profiling_data, write_file)
 
 ####
 # Clean shutdown

@@ -165,11 +165,13 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 sim.simulate(t_step)
 
             #Download
+            """
             save_vars = sim.download(download_vars)
             
             #Save to file
             for i, var_name in enumerate(save_var_names):
                 ncvars[var_name][k, :] = save_vars[i]
+            """
 
             #Write progress to screen
             print_string = progress_printer.getPrintString(t_end)
@@ -178,7 +180,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 
         logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
 
-    return outdata.filename   
+    return outdata.filename, sim.profiling_data
 
 
 

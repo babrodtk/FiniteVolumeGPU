@@ -6,10 +6,9 @@ Connection and run details for all potential benchmark systems.
 ### OsloMet 2 x Quadro RTX 6000 (VPN necessary)
 Connect:  
 ssh -AX ip-from-webpage  
-  
+
 For Jupyter Notebook:  
-ssh -L 8888:localhost:80 ip-from-webpage  
-(access localhost:8888 in browser and open terminal)  
+Access https://seymour.cs.oslomet.no in browser and open terminal 
 (one time operation) conda env create -f conda_environment.yml  
 conda activate ShallowWaterGPU / choose the "conda:ShallowWaterGPU" kernel in the notebook  
 
