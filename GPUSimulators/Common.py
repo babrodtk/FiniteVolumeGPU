@@ -95,10 +95,20 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
     save_times, and saves all of the variables in list save_var_names. Elements in  
     save_var_names can be set to None if you do not want to save them
     """
+    profiling_data_sim_runner = { 'start': {}, 'end': {} }
+    profiling_data_sim_runner["start"]["t_sim_init"] = 0
+    profiling_data_sim_runner["end"]["t_sim_init"] = 0
+    profiling_data_sim_runner["start"]["t_nc_write"] = 0
+    profiling_data_sim_runner["end"]["t_nc_write"] = 0
+    profiling_data_sim_runner["start"]["t_step"] = 0
+    profiling_data_sim_runner["end"]["t_step"] = 0
+
+    profiling_data_sim_runner["start"]["t_sim_init"] = time.time()
+
     logger = logging.getLogger(__name__)
-    
+
     assert len(save_times) > 0, "Need to specify which times to save"
-    
+
     with Timer("construct") as t:
         sim = simulator(**simulator_args)
     logger.info("Constructed in " + str(t.secs) + " seconds")
@@ -140,11 +150,13 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
         #Create variables
         for var_name in save_var_names:
             ncvars[var_name] = outdata.ncfile.createVariable(var_name, np.dtype('float32').char, ('time', 'y', 'x'), zlib=True, least_significant_digit=3)
-                
+
         #Create step sizes between each save
         t_steps = np.empty_like(save_times)
         t_steps[0] = save_times[0]
         t_steps[1:] = save_times[1:] - save_times[0:-1]
+
+        profiling_data_sim_runner["end"]["t_sim_init"] = time.time()
 
         #Start simulation loop
         progress_printer = ProgressPrinter(save_times[-1], print_every=10)
@@ -160,9 +172,15 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 logger.error("Error after {:d} steps (t={:f}: {:s}".format(sim.simSteps(), sim.simTime(), str(e)))
                 return outdata.filename
 
+            profiling_data_sim_runner["start"]["t_step"] += time.time()
+
             #Simulate
             if (t_step > 0.0):
                 sim.simulate(t_step)
+
+            profiling_data_sim_runner["end"]["t_step"] += time.time()
+
+            profiling_data_sim_runner["start"]["t_nc_write"] += time.time()
 
             #Download
             save_vars = sim.download(download_vars)
@@ -171,6 +189,8 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             for i, var_name in enumerate(save_var_names):
                 ncvars[var_name][k, :] = save_vars[i]
 
+            profiling_data_sim_runner["end"]["t_nc_write"] += time.time()
+
             #Write progress to screen
             print_string = progress_printer.getPrintString(t_end)
             if (print_string):
@@ -178,7 +198,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 
         logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
 
-    return outdata.filename   
+    return outdata.filename, profiling_data_sim_runner, sim.profiling_data_mpi
 
 
 
