@@ -111,7 +111,7 @@ nx = args.nx
 ny = args.ny
 
 gamma = 1.4
-save_times = np.linspace(0, 0.1, 2)
+save_times = np.linspace(0, 0.5, 2)
 outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
@@ -138,7 +138,7 @@ def genSim(grid, **kwargs):
     return sim
 
 
-outfile, sim_profiling_data = Common.runSimulation(
+outfile, sim_runner_profiling_data, sim_profiling_data = Common.runSimulation(
     genSim, arguments, outfile, save_times, save_var_names)
 
 if(args.profile):
@@ -158,6 +158,9 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
         profiling_data["outfile"] = outfile
     else:
         profiling_file = "MPI_" + str(MPI.COMM_WORLD.size) + "_procs_and_" + str(num_cuda_devices) + "_GPUs_profiling.json"
+
+    for stage in sim_runner_profiling_data["start"].keys():
+        profiling_data[stage] = sim_runner_profiling_data["end"][stage] - sim_runner_profiling_data["start"][stage]
 
     for stage in sim_profiling_data["start"].keys():
         profiling_data[stage] = sim_profiling_data["end"][stage] - sim_profiling_data["start"][stage]

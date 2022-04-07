@@ -6,7 +6,7 @@
 #SBATCH --account=nn9882k
 #
 # Wall clock limit:
-#SBATCH --time=00:20:00
+#SBATCH --time=00:02:00
 #
 # NOTE: See https://documentation.sigma2.no/jobs/projects_accounting.html when adjusting the values below
 #
@@ -28,7 +28,7 @@
 # source /cluster/bin/jobsetup
 
 module restore system   # instead of 'module purge' rather set module environment to the system default
-module load CUDA/10.2.89
+module load CUDA/11.4.1
 
 # It is also recommended to to list loaded modules, for easier debugging:
 module list
@@ -41,7 +41,7 @@ mkdir $SCRATCH/ShallowWaterGPU
 cp -r . $SCRATCH/ShallowWaterGPU
 
 ## Make sure the results are copied back to the submit directory (see Work Directory below):
-# chkfile MyResultFile
+# chkfile MyResultFileq
 # chkfile is replaced by 'savefile' on Saga
 savefile "$SCRATCH/ShallowWaterGPU/*.log"
 savefile "$SCRATCH/ShallowWaterGPU/*.nc"
