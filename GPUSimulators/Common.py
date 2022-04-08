@@ -89,7 +89,7 @@ def toJson(in_dict, compressed=True):
                 out_dict[key] = value
     return json.dumps(out_dict)
 
-def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names=[]):
+def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names=[], dt=None):
     """
     Runs a simulation, and stores output in netcdf file. Stores the times given in 
     save_times, and saves all of the variables in list save_var_names. Elements in  
@@ -176,7 +176,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
 
             #Simulate
             if (t_step > 0.0):
-                sim.simulate(t_step)
+                sim.simulate(t_step, dt)
 
             profiling_data_sim_runner["end"]["t_step"] += time.time()
 

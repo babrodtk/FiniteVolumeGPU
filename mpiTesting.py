@@ -110,8 +110,10 @@ logger.info("Generating initial conditions")
 nx = args.nx
 ny = args.ny
 
+dt = 0.00001
+
 gamma = 1.4
-save_times = np.linspace(0, 0.5, 2)
+save_times = np.linspace(0, 0.1, 2)
 outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
@@ -139,7 +141,7 @@ def genSim(grid, **kwargs):
 
 
 outfile, sim_runner_profiling_data, sim_profiling_data = Common.runSimulation(
-    genSim, arguments, outfile, save_times, save_var_names)
+    genSim, arguments, outfile, save_times, save_var_names, dt)
 
 if(args.profile):
     t_total_end = time.time()
@@ -149,6 +151,7 @@ if(args.profile):
 
 # write profiling to json file
 if(args.profile and MPI.COMM_WORLD.rank == 0):
+    job_id = ""
     if "SLURM_JOB_ID" in os.environ:
         job_id = int(os.environ["SLURM_JOB_ID"])
         allocated_nodes = int(os.environ["SLURM_JOB_NUM_NODES"])
@@ -167,7 +170,12 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
 
     profiling_data["nx"] = nx
     profiling_data["ny"] = ny
+    profiling_data["dt"] = dt
     profiling_data["n_time_steps"] = sim_profiling_data["n_time_steps"]
+
+    profiling_data["slurm_job_id"] = job_id
+    profiling_data["n_cuda_devices"] = str(num_cuda_devices)
+    profiling_data["n_processes"] = str(MPI.COMM_WORLD.size)
 
     with open(profiling_file, "w") as write_file:
         json.dump(profiling_data, write_file)

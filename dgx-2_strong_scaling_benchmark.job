@@ -1,0 +1,36 @@
+#!/bin/bash
+# See http://wiki.ex3.simula.no before changing the values below
+#SBATCH -p dgx2q                   # partition (GPU queue)
+#SBATCH -w g001                    # DGX-2 node
+##SBATCH --gres=gpu:4               # number of V100's
+#SBATCH -t 0-00:10                 # time (D-HH:MM)
+#SBATCH -o slurm.%N.%j.out  # STDOUT
+#SBATCH -e slurm.%N.%j.err  # STDERR
+
+ulimit -s 10240
+module load slurm/20.02.7
+module load cuda11.2/toolkit/11.2.2
+module load openmpi4-cuda11.2-ofed50-gcc8/4.1.0
+
+# Check how many gpu's your job got
+#nvidia-smi
+
+## Copy input files to the work directory:
+mkdir -p /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
+cp -r . /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
+
+# Run job
+# (Assumes Miniconda is installed in user root dir.)
+cd /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
+#mpirun --mca btl_openib_if_include mlx5_0 --mca btl_openib_warn_no_device_params_found 0 $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
+mpirun -np  $SLURM_NTASKS numactl --cpunodebind=0 --localalloc $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
+cd $HOME/src/ShallowWaterGPU
+
+## Copy files from work directory:
+# (NOTE: Copying is not performed if job fails!)
+mkdir -p output/$SLURM_JOB_ID
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.log ./output/$SLURM_JOB_ID
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.nc ./output/$SLURM_JOB_ID
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.json .
+
+rm -rf /work/$USER/$SLURM_JOB_ID
