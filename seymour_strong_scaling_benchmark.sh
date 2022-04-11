@@ -36,4 +36,4 @@ mpiexec -n 8 python mpiTesting.py -nx 4096 -ny 512 --profile &&
 mkdir -p output_seymour/$NOW/8_proc && 
 mv *.log output_seymour/$NOW/8_proc/ && mv *.nc output_seymour/$NOW/8_proc/ &&
 
-for filename in *.json; do mv "$filename" "MPI_${NOW}_${filename#????}"; done;
+for filename in *.json; do mv "$filename" "output_seymour/$NOW/MPI_${NOW}_${filename#????}"; done;

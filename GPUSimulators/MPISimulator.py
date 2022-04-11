@@ -204,6 +204,12 @@ class MPISimulator(Simulator.BaseSimulator):
         self.profiling_data_mpi = { 'start': {}, 'end': {} }
         self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange"] = 0
         self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange"] = 0
+        self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_download"] = 0
+        self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_download"] = 0
+        self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_upload"] = 0
+        self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_upload"] = 0
+        self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_sendreceive"] = 0
+        self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_sendreceive"] = 0
         self.profiling_data_mpi["start"]["t_step_mpi"] = 0
         self.profiling_data_mpi["end"]["t_step_mpi"] = 0
         self.profiling_data_mpi["n_time_steps"] = 0
@@ -343,7 +349,7 @@ class MPISimulator(Simulator.BaseSimulator):
         y1 = y0 + height
         return [x0, x1, y0, y1]
         
-    def exchange(self):        
+    def exchange(self):
         ####
         # FIXME: This function can be optimized using persitent communications. 
         # Also by overlapping some of the communications north/south and east/west of GPU and intra-node
@@ -355,6 +361,9 @@ class MPISimulator(Simulator.BaseSimulator):
         ####
         
         #Download from the GPU
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_download"] += time.time()
+            
         if self.north is not None:
             for k in range(self.nvars):
                 self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], asynch=True, extent=self.read_n)
@@ -364,6 +373,10 @@ class MPISimulator(Simulator.BaseSimulator):
         self.sim.stream.synchronize()
         
         #Send/receive to north/south neighbours
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_download"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+        
         comm_send = []
         comm_recv = []
         if self.north is not None:
@@ -378,6 +391,10 @@ class MPISimulator(Simulator.BaseSimulator):
             comm.wait()
         
         #Upload to the GPU
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_upload"] += time.time()
+        
         if self.north is not None:
             for k in range(self.nvars):
                 self.sim.u0[k].upload(self.sim.stream, self.in_n[k,:,:], extent=self.write_n)
@@ -386,6 +403,10 @@ class MPISimulator(Simulator.BaseSimulator):
                 self.sim.u0[k].upload(self.sim.stream, self.in_s[k,:,:], extent=self.write_s)
         
         #Wait for sending to complete
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_upload"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+        
         for comm in comm_send:
             comm.wait()
         
@@ -396,6 +417,10 @@ class MPISimulator(Simulator.BaseSimulator):
         ####
         
         #Download from the GPU
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_download"] += time.time()
+        
         if self.east is not None:
             for k in range(self.nvars):
                 self.sim.u0[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], asynch=True, extent=self.read_e)
@@ -405,6 +430,10 @@ class MPISimulator(Simulator.BaseSimulator):
         self.sim.stream.synchronize()
         
         #Send/receive to east/west neighbours
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_download"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+        
         comm_send = []
         comm_recv = []
         if self.east is not None:
@@ -420,6 +449,10 @@ class MPISimulator(Simulator.BaseSimulator):
             comm.wait()
         
         #Upload to the GPU
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_upload"] += time.time()
+        
         if self.east is not None:
             for k in range(self.nvars):
                 self.sim.u0[k].upload(self.sim.stream, self.in_e[k,:,:], extent=self.write_e)
@@ -428,6 +461,13 @@ class MPISimulator(Simulator.BaseSimulator):
                 self.sim.u0[k].upload(self.sim.stream, self.in_w[k,:,:], extent=self.write_w)
         
         #Wait for sending to complete
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_upload"] += time.time()
+            self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
+        
         for comm in comm_send:
             comm.wait()
+            
+        if self.profiling_data_mpi["n_time_steps"] > 0:
+            self.profiling_data_mpi["end"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
     
