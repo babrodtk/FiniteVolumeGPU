@@ -162,6 +162,7 @@ class BaseSimulator(object):
         
         #Create a CUDA stream
         self.stream = cuda.Stream()
+        self.internal_stream = cuda.Stream()
         
         #Keep track of simulation time and number of timesteps
         self.t = 0.0
