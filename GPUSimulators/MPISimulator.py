@@ -27,7 +27,7 @@ from mpi4py import MPI
 import time
 
 import pycuda.driver as cuda
-import nvtx
+#import nvtx
 
 
 
@@ -319,31 +319,30 @@ class MPISimulator(Simulator.BaseSimulator):
         self.upload_for_exchange(self.sim.u0)
     
     def substep(self, dt, step_number):
-        nvtx.mark("substep start", color="red")
+        #nvtx.mark("substep start", color="red")
 
         self.profiling_data_mpi["start"]["t_step_mpi"] += time.time()
-        nvtx.mark("substep internal", color="red")
-        self.sim.substep(dt, step_number, internal=True, external=False) # "internal ghost cells" excluded
-        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
-
-        self.profiling_data_mpi["start"]["t_step_mpi"] += time.time()
-        nvtx.mark("substep external", color="blue")
+        #nvtx.mark("substep external", color="blue")
         self.sim.substep(dt, step_number, external=True, internal=False) # only "internal ghost cells"
-        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
 
-        # NOTE: Need to download from u1, as u0<->u1 switch is not performed yet
-        nvtx.mark("download", color="red")
+        #nvtx.mark("substep internal", color="red")
+        self.sim.substep(dt, step_number, internal=True, external=False) # "internal ghost cells" excluded
+        
+        #nvtx.mark("download", color="red")
         self.sim.swapBuffers()
         self.download_for_exchange(self.sim.u0)
 
-        nvtx.mark("sync", color="red")
+        #nvtx.mark("sync", color="red")
         self.sim.stream.synchronize()
-        nvtx.mark("MPI", color="green")
+        #nvtx.mark("MPI", color="green")
+        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
         self.exchange()
-        nvtx.mark("upload", color="red")
+        self.profiling_data_mpi["start"]["t_step_mpi"] += time.time()
+        #nvtx.mark("upload", color="red")
         self.upload_for_exchange(self.sim.u0)
 
         self.sim.internal_stream.synchronize()
+        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
         
         self.profiling_data_mpi["n_time_steps"] += 1
 

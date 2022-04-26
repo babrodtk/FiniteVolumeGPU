@@ -15,6 +15,8 @@ module load openmpi4-cuda11.2-ofed50-gcc8/4.1.0
 # Check how many gpu's your job got
 #nvidia-smi
 
+mkdir -p output_dgx-2/$NOW
+
 ## Copy input files to the work directory:
 mkdir -p /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
 cp -r . /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
@@ -23,14 +25,16 @@ cp -r . /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
 # (Assumes Miniconda is installed in user root dir.)
 cd /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
 #mpirun --mca btl_openib_if_include mlx5_0 --mca btl_openib_warn_no_device_params_found 0 $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
+#nsys profile -t nvtx,cuda mpirun -np  $SLURM_NTASKS numactl --cpunodebind=0 --localalloc $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
 mpirun -np  $SLURM_NTASKS numactl --cpunodebind=0 --localalloc $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
 cd $HOME/src/ShallowWaterGPU
 
 ## Copy files from work directory:
 # (NOTE: Copying is not performed if job fails!)
-mkdir -p output/$SLURM_JOB_ID
-mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.log ./output/$SLURM_JOB_ID
-mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.nc ./output/$SLURM_JOB_ID
-mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.json .
+mkdir -p output_dgx-2/$NOW/$SLURM_JOB_ID
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.log ./output_dgx-2/$NOW/$SLURM_JOB_ID
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.nc ./output_dgx-2/$NOW/$SLURM_JOB_ID
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.json ./output_dgx-2/$NOW
+mv /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU/*.qdrep ./output_dgx-2/$NOW
 
 rm -rf /work/$USER/$SLURM_JOB_ID
