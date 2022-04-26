@@ -147,23 +147,34 @@ __global__ void KP07DimsplitKernel(
         float* E1_ptr_, int E1_pitch_, 
         
         //Output CFL
-        float* cfl_) {
+        float* cfl_,
+
+        //Subarea of internal domain to compute
+        int x0=0, int y0=0,
+        int x1=0, int y1=0) {
+
+    if(x1 == 0)
+        x1 = nx_;
+
+    if(y1 == 0)
+        y1 = ny_;
+    
     const unsigned int w = BLOCK_WIDTH;
     const unsigned int h = BLOCK_HEIGHT;
     const unsigned int gc_x = 2;
     const unsigned int gc_y = 2;
     const unsigned int vars = 4;
-        
+    
     //Shared memory variables
     __shared__ float  Q[4][h+2*gc_y][w+2*gc_x];
     __shared__ float Qx[4][h+2*gc_y][w+2*gc_x];
     __shared__ float  F[4][h+2*gc_y][w+2*gc_x];
     
     //Read into shared memory
-    readBlock<w, h, gc_x, gc_y,  1,  1>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc_x, gc_y, -1,  1>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc_x, gc_y,  1, -1>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_, boundary_conditions_);
-    readBlock<w, h, gc_x, gc_y,  1,  1>(    E0_ptr_,     E0_pitch_, Q[3], nx_, ny_, boundary_conditions_);
+    readBlock<w, h, gc_x, gc_y,  1,  1>(  rho0_ptr_,   rho0_pitch_, Q[0], nx_, ny_, boundary_conditions_, x0, y0, x1, y1);
+    readBlock<w, h, gc_x, gc_y, -1,  1>(rho_u0_ptr_, rho_u0_pitch_, Q[1], nx_, ny_, boundary_conditions_, x0, y0, x1, y1);
+    readBlock<w, h, gc_x, gc_y,  1, -1>(rho_v0_ptr_, rho_v0_pitch_, Q[2], nx_, ny_, boundary_conditions_, x0, y0, x1, y1);
+    readBlock<w, h, gc_x, gc_y,  1,  1>(    E0_ptr_,     E0_pitch_, Q[3], nx_, ny_, boundary_conditions_, x0, y0, x1, y1);
 
     //Step 0 => evolve x first, then y
     if (step_ == 0) {
@@ -224,10 +235,10 @@ __global__ void KP07DimsplitKernel(
 
     
     // Write to main memory for all internal cells
-    writeBlock<w, h, gc_x, gc_y>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_, 0, 1);
-    writeBlock<w, h, gc_x, gc_y>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_, 0, 1);
-    writeBlock<w, h, gc_x, gc_y>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_, 0, 1);
-    writeBlock<w, h, gc_x, gc_y>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_, 0, 1);
+    writeBlock<w, h, gc_x, gc_y>(  rho1_ptr_,   rho1_pitch_, Q[0], nx_, ny_, 0, 1, x0, y0, x1, y1);
+    writeBlock<w, h, gc_x, gc_y>(rho_u1_ptr_, rho_u1_pitch_, Q[1], nx_, ny_, 0, 1, x0, y0, x1, y1);
+    writeBlock<w, h, gc_x, gc_y>(rho_v1_ptr_, rho_v1_pitch_, Q[2], nx_, ny_, 0, 1, x0, y0, x1, y1);
+    writeBlock<w, h, gc_x, gc_y>(    E1_ptr_,     E1_pitch_, Q[3], nx_, ny_, 0, 1, x0, y0, x1, y1);
     
     //Compute the CFL for this block
     if (cfl_ != NULL) {

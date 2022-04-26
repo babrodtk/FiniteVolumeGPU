@@ -106,6 +106,10 @@ cuda_context = CudaContext.CudaContext(device=cuda_device, autotuning=False)
 ####
 # Set initial conditions
 ####
+
+# DEBUGGING - setting random seed
+np.random.seed(42)
+
 logger.info("Generating initial conditions")
 nx = args.nx
 ny = args.ny
@@ -113,7 +117,9 @@ ny = args.ny
 dt = 0.00001
 
 gamma = 1.4
-save_times = np.linspace(0, 0.1, 2)
+#save_times = np.linspace(0, 0.000009, 2)
+#save_times = np.linspace(0, 0.000099, 11)
+save_times = np.linspace(0, 0.000099, 2)
 outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 

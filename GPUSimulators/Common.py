@@ -546,9 +546,9 @@ class CudaArray2D:
             #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
             #Allocate host memory
             #The following fails, don't know why (crashes python)
-            #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)32)
+            cpu_data = cuda.pagelocked_empty((int(ny), int(nx)), dtype=np.float32, mem_flags=cuda.host_alloc_flags.PORTABLE)
             #Non-pagelocked: cpu_data = np.empty((ny, nx), dtype=np.float32)
-            cpu_data = self.memorypool.allocate((ny, nx), dtype=np.float32)
+            #cpu_data = self.memorypool.allocate((ny, nx), dtype=np.float32)
             
         assert nx == cpu_data.shape[1]
         assert ny == cpu_data.shape[0]
@@ -759,7 +759,7 @@ class ArakawaA2D:
             assert i < len(self.gpu_variables), "Variable {:d} is out of range".format(i)
             cpu_variables += [self.gpu_variables[i].download(stream, asynch=True)]
 
-        stream.synchronize()
+        #stream.synchronize()
         return cpu_variables
         
     def check(self):
