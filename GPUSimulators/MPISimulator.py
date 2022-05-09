@@ -27,7 +27,7 @@ from mpi4py import MPI
 import time
 
 import pycuda.driver as cuda
-#import nvtx
+import nvtx
 
 
 
@@ -137,6 +137,10 @@ class MPIGrid(object):
         #Sort in descending order
         grid = np.sort(grid)
         grid = grid[::-1]
+
+        # XXX: We only use vertical (north-south) partitioning for now
+        grid[0] = 1
+        grid[1] = num_nodes
         
         return grid
 
@@ -241,17 +245,11 @@ class MPISimulator(Simulator.BaseSimulator):
         
         #Get coordinate of this node
         #and handle global boundary conditions
-        #new_boundary_conditions = Simulator.BoundaryCondition({
-        #    'north': Simulator.BoundaryCondition.Type.Dirichlet,
-        #    'south': Simulator.BoundaryCondition.Type.Dirichlet,
-        #    'east': Simulator.BoundaryCondition.Type.Dirichlet,
-        #    'west': Simulator.BoundaryCondition.Type.Dirichlet
-        #})
         new_boundary_conditions = Simulator.BoundaryCondition({
-            'north': Simulator.BoundaryCondition.Type.Reflective,
-            'south': Simulator.BoundaryCondition.Type.Reflective,
-            'east': Simulator.BoundaryCondition.Type.Reflective,
-            'west': Simulator.BoundaryCondition.Type.Reflective
+            'north': Simulator.BoundaryCondition.Type.Dirichlet,
+            'south': Simulator.BoundaryCondition.Type.Dirichlet,
+            'east': Simulator.BoundaryCondition.Type.Dirichlet,
+            'west': Simulator.BoundaryCondition.Type.Dirichlet
         })
         gi, gj = grid.getCoordinate()
         print("gi: " + str(gi) + ", gj: " + str(gj))
@@ -313,36 +311,43 @@ class MPISimulator(Simulator.BaseSimulator):
         self.logger.debug("Simlator rank {:d} initialized on {:s}".format(self.grid.comm.rank, MPI.Get_processor_name()))
         self.profiling_data_mpi["end"]["t_sim_mpi_init"] = time.time()
 
-        #Init ghost cells (with data from neighboring subdomains)
-        self.download_for_exchange(self.sim.u0)
-        self.exchange()
-        self.upload_for_exchange(self.sim.u0)
+        self.old_exchange()
     
     def substep(self, dt, step_number):
-        #nvtx.mark("substep start", color="red")
+        
+        nvtx.mark("substep start", color="yellow")
 
         self.profiling_data_mpi["start"]["t_step_mpi"] += time.time()
-        #nvtx.mark("substep external", color="blue")
+        
+        nvtx.mark("substep internal", color="red")
+        self.sim.substep(dt, step_number, internal=True, external=False) # "internal ghost cells" excluded
+
+        nvtx.mark("substep external", color="blue")
         self.sim.substep(dt, step_number, external=True, internal=False) # only "internal ghost cells"
 
-        #nvtx.mark("substep internal", color="red")
-        self.sim.substep(dt, step_number, internal=True, external=False) # "internal ghost cells" excluded
-        
-        #nvtx.mark("download", color="red")
+        #nvtx.mark("substep full", color="blue")
+        #self.sim.substep(dt, step_number, external=True, internal=True)
+
         self.sim.swapBuffers()
-        self.download_for_exchange(self.sim.u0)
 
-        #nvtx.mark("sync", color="red")
-        self.sim.stream.synchronize()
+        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
+        
+        nvtx.mark("exchange", color="blue")
+        self.old_exchange()
+
+        #nvtx.mark("download", color="blue")
+        #self.download_for_exchange(self.sim.u0)
+        #nvtx.mark("sync", color="blue")
+        #self.sim.stream.synchronize()
         #nvtx.mark("MPI", color="green")
-        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
-        self.exchange()
-        self.profiling_data_mpi["start"]["t_step_mpi"] += time.time()
-        #nvtx.mark("upload", color="red")
-        self.upload_for_exchange(self.sim.u0)
+        #self.exchange()
+        #nvtx.mark("upload", color="blue")
+        #self.upload_for_exchange(self.sim.u0)
 
+        nvtx.mark("sync start", color="blue")
+        self.sim.stream.synchronize()
         self.sim.internal_stream.synchronize()
-        self.profiling_data_mpi["end"]["t_step_mpi"] += time.time()
+        nvtx.mark("sync end", color="blue")
         
         self.profiling_data_mpi["n_time_steps"] += 1
 
@@ -408,10 +413,6 @@ class MPISimulator(Simulator.BaseSimulator):
         if self.profiling_data_mpi["n_time_steps"] > 0:
             self.profiling_data_mpi["start"]["t_step_mpi_halo_exchange_sendreceive"] += time.time()
 
-        ####
-        # First transfer internal cells north-south
-        ####
-
         #Send/receive to north/south neighbours
         comm_send = []
         comm_recv = []
@@ -422,17 +423,6 @@ class MPISimulator(Simulator.BaseSimulator):
             comm_send += [self.grid.comm.Isend(self.out_s, dest=self.south, tag=4*self.nt + 1)]
             comm_recv += [self.grid.comm.Irecv(self.in_s, source=self.south, tag=4*self.nt + 0)]
         
-        #Wait for incoming transfers to complete
-        for comm in comm_recv:
-            comm.wait()
-        
-        #Wait for sending to complete
-        for comm in comm_send:
-            comm.wait()
-        
-        ####
-        # Then transfer east-west including ghost cells that have been filled in by north-south transfer above
-        ####
         #Send/receive to east/west neighbours
         comm_send = []
         comm_recv = []
@@ -442,7 +432,6 @@ class MPISimulator(Simulator.BaseSimulator):
         if self.west is not None:
             comm_send += [self.grid.comm.Isend(self.out_w, dest=self.west, tag=4*self.nt + 3)]
             comm_recv += [self.grid.comm.Irecv(self.in_w, source=self.west, tag=4*self.nt + 2)]
-        
         
         #Wait for incoming transfers to complete
         for comm in comm_recv:

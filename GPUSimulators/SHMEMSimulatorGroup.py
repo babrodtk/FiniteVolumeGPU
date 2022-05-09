@@ -156,10 +156,10 @@ class SHMEMGrid(object):
         
         return grid
 
-class SHMEMSimulatorGroup(Simulator.BaseSimulator):
+class SHMEMSimulatorGroup(object):
     """
     Class which handles communication and synchronization between simulators in different 
-    contexts (presumably on different GPUs)
+    contexts (typically on different GPUs)
     """
     def __init__(self, sims, grid):
         self.logger =  logging.getLogger(__name__)
@@ -175,6 +175,9 @@ class SHMEMSimulatorGroup(Simulator.BaseSimulator):
         # SHMEMSimulators that have BaseSimulator as a superclass.
         #
         # This would also eliminate the need for all the array bookkeeping in this class.
+        #
+        CONT HERE! Model shmemTesting after mpiTesting and divide existing functionality between SHMEMSimulatorGroup and SHMEMSimulator
+        
         autotuner = sims[0].context.autotuner
         sims[0].context.autotuner = None
         boundary_conditions = sims[0].getBoundaryConditions()

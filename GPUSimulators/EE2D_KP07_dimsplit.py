@@ -135,7 +135,6 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.cfl_data.gpudata,
                 0, 0, 
                 self.nx, self.ny)
-            self.u0, self.u1 = self.u1, self.u0
             return
         
         if external and not internal:
