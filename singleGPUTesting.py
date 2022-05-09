@@ -83,7 +83,8 @@ nx = args.nx
 ny = args.ny
 
 gamma = 1.4
-save_times = np.linspace(0, 10.0, 2)
+roughness = 0.125
+save_times = np.linspace(0, 0.5, 10)
 outfile = "single_gpu_out.nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
