@@ -1,6 +1,6 @@
 #!/bin/bash
 # Job name:
-#SBATCH --job-name=ShallowWaterGPUStrongScaling
+#SBATCH --job-name=ShallowWaterGPUScaling
 #
 # Project:
 #SBATCH --account=nn9882k
