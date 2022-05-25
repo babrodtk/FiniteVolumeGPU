@@ -183,6 +183,8 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
     profiling_data["slurm_job_id"] = job_id
     profiling_data["n_cuda_devices"] = str(num_cuda_devices)
     profiling_data["n_processes"] = str(MPI.COMM_WORLD.size)
+    profiling_data["git_hash"] = Common.getGitHash()
+    profiling_data["git_status"] = Common.getGitStatus()
 
     with open(profiling_file, "w") as write_file:
         json.dump(profiling_data, write_file)
