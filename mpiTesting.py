@@ -114,13 +114,13 @@ logger.info("Generating initial conditions")
 nx = args.nx
 ny = args.ny
 
-dt = 0.00001
+dt = 0.000001
 
 gamma = 1.4
 #save_times = np.linspace(0, 0.000009, 2)
 #save_times = np.linspace(0, 0.000099, 11)
 #save_times = np.linspace(0, 0.000099, 2)
-save_times = np.linspace(0, 0.000999, 2)
+save_times = np.linspace(0, 0.0000999, 2)
 outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 

@@ -6,7 +6,7 @@
 #SBATCH -t 0-00:10                 # time (D-HH:MM)
 #SBATCH -o slurm.%N.%j.out  # STDOUT
 #SBATCH -e slurm.%N.%j.err  # STDERR
-#SBATCH --reservation=martinls_6
+#SBATCH --reservation=martinls_7
 
 
 # For Linux 64, Open MPI is built with CUDA awareness but this support is disabled by default.
