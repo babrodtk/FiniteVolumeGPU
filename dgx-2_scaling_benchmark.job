@@ -6,6 +6,7 @@
 #SBATCH -t 0-00:10                 # time (D-HH:MM)
 #SBATCH -o slurm.%N.%j.out  # STDOUT
 #SBATCH -e slurm.%N.%j.err  # STDERR
+#SBATCH --reservation=martinls_6
 
 ulimit -s 10240
 module load slurm/20.02.7
@@ -26,7 +27,8 @@ cp -r . /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
 cd /work/$USER/$SLURM_JOB_ID/ShallowWaterGPU
 #mpirun --mca btl_openib_if_include mlx5_0 --mca btl_openib_warn_no_device_params_found 0 $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
 #nsys profile -t nvtx,cuda mpirun -np  $SLURM_NTASKS numactl --cpunodebind=0 --localalloc $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
-mpirun -np  $SLURM_NTASKS numactl --cpunodebind=0 --localalloc $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
+#mpirun -np  $SLURM_NTASKS numactl --cpunodebind=0 --localalloc $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
+mpirun -np  $SLURM_NTASKS $HOME/miniconda3/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
 cd $HOME/src/ShallowWaterGPU
 
 ## Copy files from work directory:

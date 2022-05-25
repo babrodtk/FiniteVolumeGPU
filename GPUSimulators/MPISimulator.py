@@ -27,7 +27,7 @@ from mpi4py import MPI
 import time
 
 import pycuda.driver as cuda
-import nvtx
+#import nvtx
 
 
 
@@ -314,14 +314,14 @@ class MPISimulator(Simulator.BaseSimulator):
     
     def substep(self, dt, step_number):
         
-        nvtx.mark("substep start", color="yellow")
+        #nvtx.mark("substep start", color="yellow")
 
         self.profiling_data_mpi["start"]["t_mpi_step"] += time.time()
         
-        nvtx.mark("substep external", color="blue")
+        #nvtx.mark("substep external", color="blue")
         self.sim.substep(dt, step_number, external=True, internal=False) # only "internal ghost cells"
         
-        nvtx.mark("substep internal", color="red")
+        #nvtx.mark("substep internal", color="red")
         self.sim.substep(dt, step_number, internal=True, external=False) # "internal ghost cells" excluded
 
         #nvtx.mark("substep full", color="blue")
@@ -331,7 +331,7 @@ class MPISimulator(Simulator.BaseSimulator):
 
         self.profiling_data_mpi["end"]["t_mpi_step"] += time.time()
         
-        nvtx.mark("exchange", color="blue")
+        #nvtx.mark("exchange", color="blue")
         self.full_exchange()
 
         #nvtx.mark("download", color="blue")
@@ -343,10 +343,10 @@ class MPISimulator(Simulator.BaseSimulator):
         #nvtx.mark("upload", color="blue")
         #self.upload_for_exchange(self.sim.u0)
 
-        nvtx.mark("sync start", color="blue")
+        #nvtx.mark("sync start", color="blue")
         self.sim.stream.synchronize()
         self.sim.internal_stream.synchronize()
-        nvtx.mark("sync end", color="blue")
+        #nvtx.mark("sync end", color="blue")
         
         self.profiling_data_mpi["n_time_steps"] += 1
 
