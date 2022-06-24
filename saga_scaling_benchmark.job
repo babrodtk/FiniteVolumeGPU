@@ -16,7 +16,8 @@
 #SBATCH --partition=accel
 #
 # Max memory usage per task (core) - increasing this will cost more core hours:
-#SBATCH --mem-per-cpu=3800M
+##SBATCH --mem-per-cpu=3800M
+#SBATCH --mem-per-cpu=24G
 #
 #SBATCH --qos=devel
 
@@ -26,6 +27,8 @@
 
 module restore system   # instead of 'module purge' rather set module environment to the system default
 module load CUDA/11.4.1
+#module load CUDA/11.1.1-GCC-10.2.0
+#module load OpenMPI/4.0.5-gcccuda-2020b
 
 # It is also recommended to to list loaded modules, for easier debugging:
 module list
@@ -40,12 +43,23 @@ cp -r . $SCRATCH/ShallowWaterGPU
 ## Make sure the results are copied back to the submit directory (see Work Directory below):
 # chkfile MyResultFile
 # chkfile is replaced by 'savefile' on Saga
-savefile "$SCRATCH/ShallowWaterGPU/*.log"
-savefile "$SCRATCH/ShallowWaterGPU/*.nc"
-savefile "$SCRATCH/ShallowWaterGPU/*.json"
+#savefile "$SCRATCH/ShallowWaterGPU/*.log"
+#savefile "$SCRATCH/ShallowWaterGPU/*.nc"
+#savefile "$SCRATCH/ShallowWaterGPU/*.json"
+#savefile "$SCRATCH/ShallowWaterGPU/*.qdrep"
+
+cleanup "rm -rf $SCRATCH/ShallowWaterGPU"
+
+export OMPI_MCA_opal_cuda_support=true
 
 ## Do some work:
 cd $SCRATCH/ShallowWaterGPU
-srun $HOME/.conda/envs/ShallowWaterGPU_HPC/bin/python3 --version
-srun $HOME/.conda/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
+srun /cluster/projects/nn9882k/martinls/.conda/envs/ShallowWaterGPU_HPC/bin/python3 --version
+srun /cluster/projects/nn9882k/martinls/.conda/envs/ShallowWaterGPU_HPC/bin/python3 mpiTesting.py -nx $NX -ny $NY --profile
 
+cd $HOME/src/ShallowWaterGPU
+mkdir -p output_saga/$NOW/$SLURM_JOB_ID
+mv $SCRATCH/ShallowWaterGPU/*.log ./output_saga/$NOW/$SLURM_JOB_ID
+mv $SCRATCH/ShallowWaterGPU/*.nc ./output_saga/$NOW/$SLURM_JOB_ID
+mv $SCRATCH/ShallowWaterGPU/*.json ./output_saga/$NOW
+mv $SCRATCH/ShallowWaterGPU/*.qdrep ./output_saga/$NOW
