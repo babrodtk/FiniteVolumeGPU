@@ -251,23 +251,19 @@ class MPISimulator(Simulator.BaseSimulator):
             'west': Simulator.BoundaryCondition.Type.Dirichlet
         })
         gi, gj = grid.getCoordinate()
-        print("gi: " + str(gi) + ", gj: " + str(gj))
+        #print("gi: " + str(gi) + ", gj: " + str(gj))
         if (gi == 0 and boundary_conditions.west != Simulator.BoundaryCondition.Type.Periodic):
             self.west = None
             new_boundary_conditions.west = boundary_conditions.west;
-            print("Rank: " + str(self.grid.comm.rank) + ": WEST")
         if (gj == 0 and boundary_conditions.south != Simulator.BoundaryCondition.Type.Periodic):
             self.south = None
             new_boundary_conditions.south = boundary_conditions.south;
-            print("Rank: " + str(self.grid.comm.rank) + ": SOUTH")
         if (gi == grid.grid[0]-1 and boundary_conditions.east != Simulator.BoundaryCondition.Type.Periodic):
             self.east = None
             new_boundary_conditions.east = boundary_conditions.east;
-            print("Rank: " + str(self.grid.comm.rank) + ": EAST")
         if (gj == grid.grid[1]-1 and boundary_conditions.north != Simulator.BoundaryCondition.Type.Periodic):
             self.north = None
             new_boundary_conditions.north = boundary_conditions.north;
-            print("Rank: " + str(self.grid.comm.rank) + ": NORTH")
         sim.setBoundaryConditions(new_boundary_conditions)
                 
         #Get number of variables
@@ -334,15 +330,6 @@ class MPISimulator(Simulator.BaseSimulator):
         #nvtx.mark("exchange", color="blue")
         self.full_exchange()
 
-        #nvtx.mark("download", color="blue")
-        #self.download_for_exchange(self.sim.u0)
-        #nvtx.mark("sync", color="blue")
-        #self.sim.stream.synchronize()
-        #nvtx.mark("MPI", color="green")
-        #self.exchange()
-        #nvtx.mark("upload", color="blue")
-        #self.upload_for_exchange(self.sim.u0)
-
         #nvtx.mark("sync start", color="blue")
         self.sim.stream.synchronize()
         self.sim.internal_stream.synchronize()
@@ -381,94 +368,7 @@ class MPISimulator(Simulator.BaseSimulator):
         y1 = y0 + height
         return [x0, x1, y0, y1]
 
-    def download_for_exchange(self, u):
-        self.profiling_data_mpi["start"]["t_mpi_halo_exchange_download"] += time.time()
-
-        # North-south
-        if self.north is not None:
-            for k in range(self.nvars):
-                u[k].download(self.sim.stream, cpu_data=self.out_n[k,:,:], asynch=True, extent=self.read_n)
-                #self.out_n[k,:,:] = u[k].download(self.sim.stream, asynch=True, extent=self.read_n)
-        if self.south is not None:
-            for k in range(self.nvars):
-                u[k].download(self.sim.stream, cpu_data=self.out_s[k,:,:], asynch=True, extent=self.read_s)
-                #self.out_s[k,:,:] = u[k].download(self.sim.stream, asynch=True, extent=self.read_s)
-
-        # East-west
-        if self.east is not None:
-            for k in range(self.nvars):
-                u[k].download(self.sim.stream, cpu_data=self.out_e[k,:,:], asynch=True, extent=self.read_e)
-                #self.out_e[k,:,:] = u[k].download(self.sim.stream, asynch=True, extent=self.read_e)
-        if self.west is not None:
-            for k in range(self.nvars):
-                u[k].download(self.sim.stream, cpu_data=self.out_w[k,:,:], asynch=True, extent=self.read_w)
-                #self.out_w[k,:,:] = u[k].download(self.sim.stream, asynch=True, extent=self.read_w)
-         
-        self.profiling_data_mpi["end"]["t_mpi_halo_exchange_download"] += time.time()
-
-    def exchange(self):
-        self.profiling_data_mpi["start"]["t_mpi_halo_exchange_sendreceive"] += time.time()
-
-        #Send/receive to north/south neighbours
-        comm_send = []
-        comm_recv = []
-        if self.north is not None:
-            comm_send += [self.grid.comm.Isend(self.out_n, dest=self.north, tag=4*self.nt + 0)]
-            comm_recv += [self.grid.comm.Irecv(self.in_n, source=self.north, tag=4*self.nt + 1)]
-        if self.south is not None:
-            comm_send += [self.grid.comm.Isend(self.out_s, dest=self.south, tag=4*self.nt + 1)]
-            comm_recv += [self.grid.comm.Irecv(self.in_s, source=self.south, tag=4*self.nt + 0)]
-        
-        #Send/receive to east/west neighbours
-        comm_send = []
-        comm_recv = []
-        if self.east is not None:
-            comm_send += [self.grid.comm.Isend(self.out_e, dest=self.east, tag=4*self.nt + 2)]
-            comm_recv += [self.grid.comm.Irecv(self.in_e, source=self.east, tag=4*self.nt + 3)]
-        if self.west is not None:
-            comm_send += [self.grid.comm.Isend(self.out_w, dest=self.west, tag=4*self.nt + 3)]
-            comm_recv += [self.grid.comm.Irecv(self.in_w, source=self.west, tag=4*self.nt + 2)]
-        
-        #Wait for incoming transfers to complete
-        for comm in comm_recv:
-            comm.wait()
-        
-        #Wait for sending to complete
-        for comm in comm_send:
-            comm.wait()
-            
-        self.profiling_data_mpi["end"]["t_mpi_halo_exchange_sendreceive"] += time.time()
-
-    def upload_for_exchange(self, u):
-        self.profiling_data_mpi["start"]["t_mpi_halo_exchange_upload"] += time.time()
-
-        # North-south
-        if self.north is not None:
-            for k in range(self.nvars):
-                u[k].upload(self.sim.stream, self.in_n[k,:,:], extent=self.write_n)
-        if self.south is not None:
-            for k in range(self.nvars):
-                u[k].upload(self.sim.stream, self.in_s[k,:,:], extent=self.write_s)
-        
-        # East-west
-        if self.east is not None:
-            for k in range(self.nvars):
-                u[k].upload(self.sim.stream, self.in_e[k,:,:], extent=self.write_e)
-        if self.west is not None:
-            for k in range(self.nvars):
-                u[k].upload(self.sim.stream, self.in_w[k,:,:], extent=self.write_w)
-        
-        self.profiling_data_mpi["end"]["t_mpi_halo_exchange_upload"] += time.time()
-
-
-
     def full_exchange(self):
-        ####
-        # FIXME: This function can be optimized using persitent communications. 
-        # Also by overlapping some of the communications north/south and east/west of GPU and intra-node
-        # communications
-        ####
-        
         ####
         # First transfer internal cells north-south
         ####
