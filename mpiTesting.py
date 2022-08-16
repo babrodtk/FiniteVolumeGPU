@@ -114,13 +114,13 @@ logger.info("Generating initial conditions")
 nx = args.nx
 ny = args.ny
 
-dt = 0.00001
+dt = 0.000001
 
 gamma = 1.4
 #save_times = np.linspace(0, 0.000009, 2)
 #save_times = np.linspace(0, 0.000099, 11)
 #save_times = np.linspace(0, 0.000099, 2)
-save_times = np.linspace(0, 0.000999, 2)
+save_times = np.linspace(0, 0.0000999, 2)
 outfile = "mpi_out_" + str(MPI.COMM_WORLD.rank) + ".nc"
 save_var_names = ['rho', 'rho_u', 'rho_v', 'E']
 
@@ -183,6 +183,8 @@ if(args.profile and MPI.COMM_WORLD.rank == 0):
     profiling_data["slurm_job_id"] = job_id
     profiling_data["n_cuda_devices"] = str(num_cuda_devices)
     profiling_data["n_processes"] = str(MPI.COMM_WORLD.size)
+    profiling_data["git_hash"] = Common.getGitHash()
+    profiling_data["git_status"] = Common.getGitStatus()
 
     with open(profiling_file, "w") as write_file:
         json.dump(profiling_data, write_file)

@@ -100,8 +100,8 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
     profiling_data_sim_runner["end"]["t_sim_init"] = 0
     profiling_data_sim_runner["start"]["t_nc_write"] = 0
     profiling_data_sim_runner["end"]["t_nc_write"] = 0
-    profiling_data_sim_runner["start"]["t_step"] = 0
-    profiling_data_sim_runner["end"]["t_step"] = 0
+    profiling_data_sim_runner["start"]["t_full_step"] = 0
+    profiling_data_sim_runner["end"]["t_full_step"] = 0
 
     profiling_data_sim_runner["start"]["t_sim_init"] = time.time()
 
@@ -121,7 +121,14 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
         outdata.ncfile.git_hash = getGitHash()
         outdata.ncfile.git_status = getGitStatus()
         outdata.ncfile.simulator = str(simulator)
-        outdata.ncfile.sim_args = toJson(simulator_args)
+        
+        # do not write fields to attributes (they are to large)
+        simulator_args_for_ncfile = simulator_args.copy()
+        del simulator_args_for_ncfile["rho"]
+        del simulator_args_for_ncfile["rho_u"]
+        del simulator_args_for_ncfile["rho_v"]
+        del simulator_args_for_ncfile["E"]
+        outdata.ncfile.sim_args = toJson(simulator_args_for_ncfile)
         
         #Create dimensions
         outdata.ncfile.createDimension('time', len(save_times))
@@ -172,13 +179,13 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 logger.error("Error after {:d} steps (t={:f}: {:s}".format(sim.simSteps(), sim.simTime(), str(e)))
                 return outdata.filename
 
-            profiling_data_sim_runner["start"]["t_step"] += time.time()
+            profiling_data_sim_runner["start"]["t_full_step"] += time.time()
 
             #Simulate
             if (t_step > 0.0):
                 sim.simulate(t_step, dt)
 
-            profiling_data_sim_runner["end"]["t_step"] += time.time()
+            profiling_data_sim_runner["end"]["t_full_step"] += time.time()
 
             profiling_data_sim_runner["start"]["t_nc_write"] += time.time()
 

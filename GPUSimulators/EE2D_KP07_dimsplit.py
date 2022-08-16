@@ -138,9 +138,9 @@ class EE2D_KP07_dimsplit (BaseSimulator):
             return
         
         if external and not internal:
-            #############################################################
-            # XXX: Only treating north and south external cells for now #
-            #############################################################
+            ###################################
+            # XXX: Corners are treated twice! #
+            ###################################
 
             ns_grid_size = (self.grid_size[0], 1)
 
@@ -189,14 +189,58 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.cfl_data.gpudata,
                 0, 0,
                 self.nx, int(self.u0[0].y_halo))
+            
+            we_grid_size = (1, self.grid_size[1])
+            
+            # WEST
+            # (x0, y0) x (x1, y1)
+            #  (0, 0) x (x_halo, ny)
+            self.kernel.prepared_async_call(we_grid_size, self.block_size, self.stream, 
+                self.nx, self.ny,
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                0, 0,
+                int(self.u0[0].x_halo), self.ny)
+
+            # EAST
+            # (x0, y0) x (x1, y1)
+            #   (nx-x_halo, 0) x (nx, ny)
+            self.kernel.prepared_async_call(we_grid_size, self.block_size, self.stream, 
+                self.nx, self.ny,
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                self.nx - int(self.u0[0].x_halo), 0,
+                self.nx, self.ny)
             return
 
         if internal and not external:
-            #############################################################
-            # XXX: Only treating north and south external cells for now #
-            #      So we need to include west and east boundary here!   #
-            #############################################################
-
+            
             # INTERNAL DOMAIN
             #         (x0, y0) x (x1, y1)
             # (x_halo, y_halo) x (nx - x_halo, ny - y_halo)
@@ -217,8 +261,8 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
                 self.u1[3].data.gpudata, self.u1[3].data.strides[0],
                 self.cfl_data.gpudata,
-                0, int(self.u0[0].y_halo),
-                self.nx, self.ny - int(self.u0[0].y_halo))
+                int(self.u0[0].x_halo), int(self.u0[0].y_halo),
+                self.nx - int(self.u0[0].x_halo), self.ny - int(self.u0[0].y_halo))
             return
 
     def swapBuffers(self):
