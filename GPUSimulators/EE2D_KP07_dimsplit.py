@@ -90,7 +90,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                                         }, 
                                         jit_compile_args={})
         self.kernel = module.get_function("KP07DimsplitKernel")
-        self.kernel.prepare("iiffffffiiPiPiPiPiPiPiPiPiP")
+        self.kernel.prepare("iiffffffiiPiPiPiPiPiPiPiPiPiiii")
         
         
         #Create data by uploading to device
@@ -109,11 +109,14 @@ class EE2D_KP07_dimsplit (BaseSimulator):
         self.cfl_data.fill(self.dt, stream=self.stream)
                         
     
-    def substep(self, dt, step_number):
-        self.substepDimsplit(0.5*dt, step_number)
-                
-    def substepDimsplit(self, dt, substep):
-        self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
+    def substep(self, dt, step_number, external=True, internal=True):
+            self.substepDimsplit(0.5*dt, step_number, external, internal)
+    
+    def substepDimsplit(self, dt, substep, external, internal):
+        if external and internal:
+            #print("COMPLETE DOMAIN (dt=" + str(dt) + ")")
+
+            self.kernel.prepared_async_call(self.grid_size, self.block_size, self.stream, 
                 self.nx, self.ny, 
                 self.dx, self.dy, dt, 
                 self.g, 
@@ -129,8 +132,142 @@ class EE2D_KP07_dimsplit (BaseSimulator):
                 self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
                 self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
                 self.u1[3].data.gpudata, self.u1[3].data.strides[0],
-                self.cfl_data.gpudata)
+                self.cfl_data.gpudata,
+                0, 0, 
+                self.nx, self.ny)
+            return
+        
+        if external and not internal:
+            ###################################
+            # XXX: Corners are treated twice! #
+            ###################################
+
+            ns_grid_size = (self.grid_size[0], 1)
+
+            # NORTH
+            # (x0, y0) x (x1, y1)
+            #  (0, ny-y_halo) x (nx, ny)
+            self.kernel.prepared_async_call(ns_grid_size, self.block_size, self.stream, 
+                self.nx, self.ny,
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                0, self.ny - int(self.u0[0].y_halo),
+                self.nx, self.ny)
+
+            # SOUTH
+            # (x0, y0) x (x1, y1)
+            #   (0, 0) x (nx, y_halo)
+            self.kernel.prepared_async_call(ns_grid_size, self.block_size, self.stream, 
+                self.nx, self.ny,
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                0, 0,
+                self.nx, int(self.u0[0].y_halo))
+            
+            we_grid_size = (1, self.grid_size[1])
+            
+            # WEST
+            # (x0, y0) x (x1, y1)
+            #  (0, 0) x (x_halo, ny)
+            self.kernel.prepared_async_call(we_grid_size, self.block_size, self.stream, 
+                self.nx, self.ny,
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                0, 0,
+                int(self.u0[0].x_halo), self.ny)
+
+            # EAST
+            # (x0, y0) x (x1, y1)
+            #   (nx-x_halo, 0) x (nx, ny)
+            self.kernel.prepared_async_call(we_grid_size, self.block_size, self.stream, 
+                self.nx, self.ny,
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                self.nx - int(self.u0[0].x_halo), 0,
+                self.nx, self.ny)
+            return
+
+        if internal and not external:
+            
+            # INTERNAL DOMAIN
+            #         (x0, y0) x (x1, y1)
+            # (x_halo, y_halo) x (nx - x_halo, ny - y_halo)
+            self.kernel.prepared_async_call(self.grid_size, self.block_size, self.internal_stream, 
+                self.nx, self.ny, 
+                self.dx, self.dy, dt, 
+                self.g, 
+                self.gamma, 
+                self.theta, 
+                substep,
+                self.boundary_conditions, 
+                self.u0[0].data.gpudata, self.u0[0].data.strides[0], 
+                self.u0[1].data.gpudata, self.u0[1].data.strides[0], 
+                self.u0[2].data.gpudata, self.u0[2].data.strides[0], 
+                self.u0[3].data.gpudata, self.u0[3].data.strides[0], 
+                self.u1[0].data.gpudata, self.u1[0].data.strides[0], 
+                self.u1[1].data.gpudata, self.u1[1].data.strides[0], 
+                self.u1[2].data.gpudata, self.u1[2].data.strides[0], 
+                self.u1[3].data.gpudata, self.u1[3].data.strides[0],
+                self.cfl_data.gpudata,
+                int(self.u0[0].x_halo), int(self.u0[0].y_halo),
+                self.nx - int(self.u0[0].x_halo), self.ny - int(self.u0[0].y_halo))
+            return
+
+    def swapBuffers(self):
         self.u0, self.u1 = self.u1, self.u0
+        return
         
     def getOutput(self):
         return self.u0
@@ -138,6 +275,7 @@ class EE2D_KP07_dimsplit (BaseSimulator):
     def check(self):
         self.u0.check()
         self.u1.check()
+        return
         
     def computeDt(self):
         max_dt = gpuarray.min(self.cfl_data, stream=self.stream).get();

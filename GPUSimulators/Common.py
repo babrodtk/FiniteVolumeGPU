@@ -89,16 +89,26 @@ def toJson(in_dict, compressed=True):
                 out_dict[key] = value
     return json.dumps(out_dict)
 
-def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names=[]):
+def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names=[], dt=None):
     """
     Runs a simulation, and stores output in netcdf file. Stores the times given in 
     save_times, and saves all of the variables in list save_var_names. Elements in  
     save_var_names can be set to None if you do not want to save them
     """
+    profiling_data_sim_runner = { 'start': {}, 'end': {} }
+    profiling_data_sim_runner["start"]["t_sim_init"] = 0
+    profiling_data_sim_runner["end"]["t_sim_init"] = 0
+    profiling_data_sim_runner["start"]["t_nc_write"] = 0
+    profiling_data_sim_runner["end"]["t_nc_write"] = 0
+    profiling_data_sim_runner["start"]["t_full_step"] = 0
+    profiling_data_sim_runner["end"]["t_full_step"] = 0
+
+    profiling_data_sim_runner["start"]["t_sim_init"] = time.time()
+
     logger = logging.getLogger(__name__)
-    
+
     assert len(save_times) > 0, "Need to specify which times to save"
-    
+
     with Timer("construct") as t:
         sim = simulator(**simulator_args)
     logger.info("Constructed in " + str(t.secs) + " seconds")
@@ -111,7 +121,14 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
         outdata.ncfile.git_hash = getGitHash()
         outdata.ncfile.git_status = getGitStatus()
         outdata.ncfile.simulator = str(simulator)
-        outdata.ncfile.sim_args = toJson(simulator_args)
+        
+        # do not write fields to attributes (they are to large)
+        simulator_args_for_ncfile = simulator_args.copy()
+        del simulator_args_for_ncfile["rho"]
+        del simulator_args_for_ncfile["rho_u"]
+        del simulator_args_for_ncfile["rho_v"]
+        del simulator_args_for_ncfile["E"]
+        outdata.ncfile.sim_args = toJson(simulator_args_for_ncfile)
         
         #Create dimensions
         outdata.ncfile.createDimension('time', len(save_times))
@@ -140,11 +157,13 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
         #Create variables
         for var_name in save_var_names:
             ncvars[var_name] = outdata.ncfile.createVariable(var_name, np.dtype('float32').char, ('time', 'y', 'x'), zlib=True, least_significant_digit=3)
-                
+
         #Create step sizes between each save
         t_steps = np.empty_like(save_times)
         t_steps[0] = save_times[0]
         t_steps[1:] = save_times[1:] - save_times[0:-1]
+
+        profiling_data_sim_runner["end"]["t_sim_init"] = time.time()
 
         #Start simulation loop
         progress_printer = ProgressPrinter(save_times[-1], print_every=10)
@@ -160,9 +179,15 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 logger.error("Error after {:d} steps (t={:f}: {:s}".format(sim.simSteps(), sim.simTime(), str(e)))
                 return outdata.filename
 
+            profiling_data_sim_runner["start"]["t_full_step"] += time.time()
+
             #Simulate
             if (t_step > 0.0):
-                sim.simulate(t_step)
+                sim.simulate(t_step, dt)
+
+            profiling_data_sim_runner["end"]["t_full_step"] += time.time()
+
+            profiling_data_sim_runner["start"]["t_nc_write"] += time.time()
 
             #Download
             save_vars = sim.download(download_vars)
@@ -171,6 +196,8 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
             for i, var_name in enumerate(save_var_names):
                 ncvars[var_name][k, :] = save_vars[i]
 
+            profiling_data_sim_runner["end"]["t_nc_write"] += time.time()
+
             #Write progress to screen
             print_string = progress_printer.getPrintString(t_end)
             if (print_string):
@@ -178,7 +205,7 @@ def runSimulation(simulator, simulator_args, outfile, save_times, save_var_names
                 
         logger.debug("Simulated to t={:f} in {:d} timesteps (average dt={:f})".format(t_end, sim.simSteps(), sim.simTime() / sim.simSteps()))
 
-    return outdata.filename   
+    return outdata.filename, profiling_data_sim_runner, sim.profiling_data_mpi
 
 
 
@@ -526,9 +553,9 @@ class CudaArray2D:
             #self.logger.debug("Downloading [%dx%d] buffer", self.nx, self.ny)
             #Allocate host memory
             #The following fails, don't know why (crashes python)
-            #cpu_data = cuda.pagelocked_empty((self.ny, self.nx), np.float32)32)
+            cpu_data = cuda.pagelocked_empty((int(ny), int(nx)), dtype=np.float32, mem_flags=cuda.host_alloc_flags.PORTABLE)
             #Non-pagelocked: cpu_data = np.empty((ny, nx), dtype=np.float32)
-            cpu_data = self.memorypool.allocate((ny, nx), dtype=np.float32)
+            #cpu_data = self.memorypool.allocate((ny, nx), dtype=np.float32)
             
         assert nx == cpu_data.shape[1]
         assert ny == cpu_data.shape[0]
@@ -739,7 +766,7 @@ class ArakawaA2D:
             assert i < len(self.gpu_variables), "Variable {:d} is out of range".format(i)
             cpu_variables += [self.gpu_variables[i].download(stream, asynch=True)]
 
-        stream.synchronize()
+        #stream.synchronize()
         return cpu_variables
         
     def check(self):

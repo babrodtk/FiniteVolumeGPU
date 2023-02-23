@@ -321,7 +321,9 @@ template<int w, int h, int gc_x, int gc_y, int sign_x, int sign_y>
 inline __device__ void readBlock(float* ptr_, int pitch_,
                 float Q[h+2*gc_y][w+2*gc_x], 
                 const int nx_, const int ny_,
-                const int boundary_conditions_) {
+                const int boundary_conditions_,
+                 int x0, int y0,
+                 int x1, int y1) {
     //Index of block within domain
     const int bx = blockDim.x * blockIdx.x;
     const int by = blockDim.y * blockIdx.y;
@@ -330,14 +332,14 @@ inline __device__ void readBlock(float* ptr_, int pitch_,
     //Loop over all variables
     for (int j=threadIdx.y; j<h+2*gc_y; j+=h) {
         //Handle periodic boundary conditions here
-        int l = handlePeriodicBoundaryY<gc_y>(by + j, ny_, boundary_conditions_);
-        l = min(l, ny_+2*gc_y-1);
+        int l = handlePeriodicBoundaryY<gc_y>(by + j + y0, ny_, boundary_conditions_);
+        l = min(l, min(ny_+2*gc_y-1, y1+2*gc_y-1));
         float* row = (float*) ((char*) ptr_ + pitch_*l);
         
         for (int i=threadIdx.x; i<w+2*gc_x; i+=w) {
             //Handle periodic boundary conditions here
-            int k = handlePeriodicBoundaryX<gc_x>(bx + i, nx_, boundary_conditions_);
-            k = min(k, nx_+2*gc_x-1);
+            int k = handlePeriodicBoundaryX<gc_x>(bx + i + x0, nx_, boundary_conditions_);
+            k = min(k, min(nx_+2*gc_x-1, x1+2*gc_x-1));
             
             //Read from global memory
             Q[j][i] = row[k];
@@ -358,14 +360,20 @@ template<int w, int h, int gc_x, int gc_y>
 inline __device__ void writeBlock(float* ptr_, int pitch_,
                  float shmem[h+2*gc_y][w+2*gc_x],
                  const int nx_, const int ny_,
-                 int rk_step_, int rk_order_) {
+                 int rk_step_, int rk_order_,
+                 int x0, int y0,
+                 int x1, int y1) {
     
     //Index of cell within domain
-    const int ti = blockDim.x*blockIdx.x + threadIdx.x + gc_x;
-    const int tj = blockDim.y*blockIdx.y + threadIdx.y + gc_y;
+    const int ti = blockDim.x*blockIdx.x + threadIdx.x + gc_x + x0;
+    const int tj = blockDim.y*blockIdx.y + threadIdx.y + gc_y + y0;
+
+    //In case we are writing only to a subarea given by (x0, y0) x (x1, y1)
+    const int max_ti = min(nx_+gc_x, x1+gc_x);
+    const int max_tj = min(ny_+gc_y, y1+gc_y);
     
     //Only write internal cells
-    if (ti < nx_+gc_x && tj < ny_+gc_y) {
+    if ((x0+gc_x <= ti) && (ti < max_ti) && (y0+gc_y <= tj) && (tj < max_tj)) {
         //Index of thread within block
         const int tx = threadIdx.x + gc_x;
         const int ty = threadIdx.y + gc_y;
@@ -416,6 +424,9 @@ inline __device__ void writeBlock(float* ptr_, int pitch_,
                 row[ti] = t*row[ti] + (1.0f-t)*shmem[ty][tx];
             }
         }
+
+        // DEBUG
+        //row[ti] = 99.0;
     }
 }
 
