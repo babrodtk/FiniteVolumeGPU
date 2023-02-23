@@ -1,4 +1,6 @@
-# ShallowWaterGPU
+# FiniteVolumeGPU
+
+This Python software package implements several finite volume discretizations on Cartesian grids for the shallow water equations and the Euler equations. 
 
 ## Setup
 A good place to start exploring this codebase is the notebooks. Complete the following steps to run the notebooks:
